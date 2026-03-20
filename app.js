@@ -1,4 +1,4 @@
-const APP_VERSION = 'v1.3.0';
+const APP_VERSION = 'v1.3.2';
 const BEACHES = [
   {
     id: 'sandy-hook',
@@ -68,6 +68,7 @@ function findWindShift(hours) {
 }
 
 let latestHourlyPeriods = [];
+let latestAlerts = [];
 
 function windShiftNote(hours) {
   const shift = findWindShift(hours);
@@ -190,6 +191,9 @@ function renderNotes(notes) {
 function buildBeachNotes(data) {
   const notes = [];
 
+  const rip = ripCurrentNote(data.alerts);
+  if (rip) notes.push(rip);
+
   const wind = windShiftNote(data.hourly);
   if (wind) notes.push(wind);
 
@@ -289,11 +293,13 @@ async function loadBeach() {
     await Promise.all([
       loadWeather(beach),
       loadTides(beach),
-      loadWaterTemp(beach)
+      loadWaterTemp(beach),
+      loadAlerts(beach) 
     ]);
     
 const notes = buildBeachNotes({
-    hourly: latestHourlyPeriods
+    hourly: latestHourlyPeriods,
+    alerts: latestAlerts 
   });
   renderNotes(notes);
 
@@ -325,6 +331,20 @@ async function loadWeather(beach) {
   windEl.textContent = `${current.windDirection} ${current.windSpeed}`;
   weatherUpdatedEl.textContent = `Forecast starts ${formatDateTime(current.startTime)}`;
 }
+
+async function loadAlerts(beach) {
+  try {
+    const url = `https://api.weather.gov/alerts/active?point=${beach.lat},${beach.lon}`;
+    const res = await fetch(url);
+    const data = await res.json();
+
+    latestAlerts = data.features || [];
+  } catch (err) {
+    console.error("Alerts fetch failed", err);
+    latestAlerts = [];
+  }
+}
+
 
 function getMoonPhase(date = new Date()) {
 
@@ -483,6 +503,24 @@ function transformReferenceCurveForBelmar(points) {
     .filter(Boolean);
 }
 
+function ripCurrentNote(alerts) {
+  if (!alerts || alerts.length === 0) return null;
+
+  for (const a of alerts) {
+    const event = (a.properties.event || "").toLowerCase();
+    const desc = (a.properties.description || "").toLowerCase();
+
+    if (event.includes("rip") || event.includes("beach hazards")) {
+
+      if (desc.includes("high")) return "Rip risk: High";
+      if (desc.includes("moderate")) return "Rip risk: Moderate";
+
+      return "Rip risk: Moderate";
+    }
+  }
+
+  return null;
+}
 
 async function loadWaterTemp(beach) {
   const url = `https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?product=water_temperature&application=beach-app&station=${beach.waterTempStation}&date=latest&units=english&time_zone=lst_ldt&format=json`;
