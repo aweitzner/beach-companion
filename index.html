@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="theme-color" content="#0f172a" />
+  <title>Beach Companion</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="app">
+    <header class="header">
+      <div>
+        <h1>Beach Companion</h1>
+        <p class="subhead">Sandy Hook and Belmar</p>
+      </div>
+    </header>
+
+    <section class="card">
+      <label for="beachSelect">Beach</label>
+      <select id="beachSelect"></select>
+      <p id="status" class="status">Loading…</p>
+    </section>
+
+    <section id="beachNotes" class="card">
+  <h2>Beach Notes</h2>
+  <ul id="notesList">
+    <li>No special notes</li>
+  </ul>
+</section>
+
+    <section class="grid">
+      <article class="card">
+        <h2>Now</h2>
+        <div class="metric-row">
+          <div>
+            <div class="label">Air</div>
+            <div id="airTemp" class="value">--</div>
+          </div>
+          <div>
+            <div class="label">Wind</div>
+            <div id="wind" class="value">--</div>
+          </div>
+        </div>
+        <div class="updated" id="weatherUpdated"></div>
+      </article>
+
+      <article class="card">
+        <h2>Ocean</h2>
+        <div class="metric-row single">
+          <div>
+            <div class="label">Water Temp</div>
+            <div id="waterTemp" class="value">--</div>
+          </div>
+        </div>
+        <div class="updated" id="waterUpdated"></div>
+      </article>
+    </section>
+
+    <section class="card">
+      <h2>Tides Today</h2>
+      <div id="nextTide" class="next-tide">--</div>
+      <div id="moonPhase"></div>
+      <div id="tideList" class="tide-list"></div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
