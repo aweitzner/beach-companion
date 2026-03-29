@@ -1,4 +1,4 @@
-const APP_VERSION = 'v1.3.6';
+const APP_VERSION = 'v1.3.7';
 const BEACHES = [
   {
     id: 'sandy-hook',
@@ -140,10 +140,15 @@ function precipitationNote(hours) {
   if (!hours || hours.length === 0) return null;
 
   const threshold = 30;
+  const now = new Date();
 
   let best = null;
 
   for (const h of hours) {
+    const forecastTime = new Date(h.startTime);
+    if (Number.isNaN(forecastTime.getTime())) continue;
+    if (forecastTime < now) continue;
+    if (!isSameLocalDay(forecastTime, now)) continue;
     if (h.probabilityOfPrecipitation?.value < threshold) continue;
 
     const severity = getPrecipSeverity(h.shortForecast);
@@ -152,14 +157,13 @@ function precipitationNote(hours) {
     if (!best || rankSeverity(severity) > rankSeverity(best.severity)) {
       best = {
         severity,
-        time: new Date(h.startTime)
+        time: forecastTime
       };
     }
   }
 
   if (!best) return null;
 
-  const now = new Date();
   const diff = best.time - now;
   const priority = best.severity === 'Thunderstorms' ? 1 : 4;
 
