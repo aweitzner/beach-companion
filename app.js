@@ -1,4 +1,4 @@
-const APP_VERSION = 'v1.3.2';
+const APP_VERSION = 'v1.3.6';
 const BEACHES = [
   {
     id: 'sandy-hook',
@@ -23,6 +23,8 @@ const statusEl = document.getElementById('status');
 const airTempEl = document.getElementById('airTemp');
 const windEl = document.getElementById('wind');
 const weatherUpdatedEl = document.getElementById('weatherUpdated');
+const weatherFeelsEl = ensureWeatherFeelsEl();
+const weatherRangeEl = ensureWeatherRangeEl();
 const waterTempEl = document.getElementById('waterTemp');
 const waterUpdatedEl = document.getElementById('waterUpdated');
 const nextTideEl = document.getElementById('nextTide');
@@ -105,7 +107,10 @@ phrase = `Wind shifting ${dirText}`;
     timeText = "around " + shiftTime.toLocaleTimeString([], { hour: 'numeric' });
   }
 
-  return `${phrase} ${timeText}`;
+  return {
+    text: `${phrase} ${timeText}`,
+    priority: 3
+  };
 }
 
 function degToCardinal(deg) {
@@ -156,16 +161,22 @@ function precipitationNote(hours) {
 
   const now = new Date();
   const diff = best.time - now;
-
-  let timeText;
+  const priority = best.severity === 'Thunderstorms' ? 1 : 4;
 
   if (diff <= 60 * 60 * 1000) {
-    timeText = "soon";
-    return `${best.severity} likely soon`;
+    return {
+      text: `${best.severity} likely soon`,
+      priority,
+      severity: best.severity
+    };
   }
 
-  timeText = "after " + best.time.toLocaleTimeString([], { hour: 'numeric' });
-  return `${best.severity} possible ${timeText}`;
+  const timeText = "after " + best.time.toLocaleTimeString([], { hour: 'numeric' });
+  return {
+    text: `${best.severity} possible ${timeText}`,
+    priority,
+    severity: best.severity
+  };
 }
 
 function rankSeverity(severity) {
@@ -184,21 +195,21 @@ function renderNotes(notes) {
   }
 
   notesListEl.innerHTML = notes
-    .map(note => `<li>${note}</li>`)
+    .map(note => `<li title="${note.text}">${note.text}</li>`)
     .join('');
 }
 
 function buildBeachNotes(data) {
-  const notes = [];
-
-  const rip = ripCurrentNote(data.alerts);
-  if (rip) notes.push(rip);
-
-  const wind = windShiftNote(data.hourly);
-  if (wind) notes.push(wind);
-
-  const rain = precipitationNote(data.hourly);
-  if (rain) notes.push(rain);
+  const precipitation = precipitationNote(data.hourly);
+  const notes = [
+    ripCurrentNote(data.alerts),
+    windShiftNote(data.hourly),
+    precipitation,
+    sealNote(data.beach, data.current, precipitation)
+  ]
+    .filter(Boolean)
+    .sort((a, b) => a.priority - b.priority)
+    .slice(0, 3);
 
   return notes;
 }
@@ -282,6 +293,32 @@ function ensureTideChartContainer() {
   nextTideEl.insertAdjacentElement('afterend', chartWrap);
 }
 
+function ensureWeatherFeelsEl() {
+  let feelsEl = document.getElementById('weatherFeels');
+  if (feelsEl) return feelsEl;
+
+  feelsEl = document.createElement('div');
+  feelsEl.id = 'weatherFeels';
+  feelsEl.className = 'updated';
+  feelsEl.style.marginTop = '10px';
+  feelsEl.style.marginBottom = '0';
+  weatherUpdatedEl.insertAdjacentElement('beforebegin', feelsEl);
+  return feelsEl;
+}
+
+function ensureWeatherRangeEl() {
+  let rangeEl = document.getElementById('weatherRange');
+  if (rangeEl) return rangeEl;
+
+  rangeEl = document.createElement('div');
+  rangeEl.id = 'weatherRange';
+  rangeEl.className = 'updated';
+  rangeEl.style.marginTop = '6px';
+  rangeEl.setAttribute('aria-live', 'polite');
+  weatherUpdatedEl.insertAdjacentElement('afterend', rangeEl);
+  return rangeEl;
+}
+
 function getSelectedBeach() {
   return BEACHES.find(b => b.id === beachSelect.value) || BEACHES[0];
 }
@@ -298,6 +335,8 @@ async function loadBeach() {
     ]);
     
 const notes = buildBeachNotes({
+    beach,
+    current: latestHourlyPeriods[0],
     hourly: latestHourlyPeriods,
     alerts: latestAlerts 
   });
@@ -329,7 +368,180 @@ async function loadWeather(beach) {
 
   airTempEl.textContent = `${current.temperature}°${current.temperatureUnit}`;
   windEl.textContent = `${current.windDirection} ${current.windSpeed}`;
+  renderWeatherFeels(current);
   weatherUpdatedEl.textContent = `Forecast starts ${formatDateTime(current.startTime)}`;
+  renderWeatherRange(latestHourlyPeriods, current.temperatureUnit);
+}
+
+function renderWeatherFeels(period) {
+  const comfort = getBeachComfortLabel(period);
+  weatherFeelsEl.textContent = comfort ? `Feels: ${comfort}` : '';
+}
+
+function getBeachComfortLabel(period) {
+  const temperature = period?.temperature;
+  const humidity = period?.relativeHumidity?.value;
+  const windSpeed = parseWindSpeed(period?.windSpeed);
+
+  if (!Number.isFinite(temperature)) {
+    return null;
+  }
+
+  const labels = [
+    'Brutal cold',
+    'Bitter cold',
+    'Very cold',
+    'Cold',
+    'Cool',
+    'Comfortable',
+    'Warm',
+    'Hot',
+    'Oppressive'
+  ];
+  let level = getBaseComfortLevel(temperature);
+
+  if (Number.isFinite(windSpeed)) {
+    if (temperature < 25 && windSpeed >= 20) {
+      level -= 2;
+    } else if (temperature < 40 && windSpeed >= 15) {
+      level -= 1;
+    } else if (temperature >= 40 && temperature <= 60 && windSpeed >= 12) {
+      level -= 1;
+    } else if (temperature >= 75 && windSpeed >= 12) {
+      level -= 1;
+    }
+  }
+
+  if (temperature >= 75 && Number.isFinite(humidity)) {
+    if (humidity >= 80) {
+      level += 2;
+    } else if (humidity >= 70) {
+      level += 1;
+    }
+  }
+
+  level = Math.max(0, Math.min(level, labels.length - 1));
+  const label = labels[level];
+
+  if (label === 'Hot' && humidity >= 70) {
+    return 'Hot & humid';
+  }
+
+  return label;
+}
+
+function getBaseComfortLevel(temperature) {
+  if (temperature < 10) return 0;
+  if (temperature <= 24) return 1;
+  if (temperature <= 39) return 2;
+  if (temperature <= 54) return 3;
+  if (temperature <= 64) return 4;
+  if (temperature <= 74) return 5;
+  if (temperature <= 81) return 6;
+  if (temperature <= 87) return 7;
+  return 8;
+}
+
+function parseWindSpeed(value) {
+  if (!value) return null;
+
+  const matches = String(value).match(/\d+/g);
+  if (!matches?.length) return null;
+
+  const speeds = matches.map(Number).filter(Number.isFinite);
+  if (!speeds.length) return null;
+
+  return Math.max(...speeds);
+}
+
+function sealNote(beach, currentPeriod, precipitation) {
+  if (beach?.id !== 'sandy-hook') return null;
+  if (!isSealSeason()) return null;
+
+  const windDirection = String(currentPeriod?.windDirection || '').toUpperCase();
+  const windSpeed = parseWindSpeed(currentPeriod?.windSpeed);
+  const severePrecip = precipitation?.severity === 'Thunderstorms' || precipitation?.severity === 'Heavy rain';
+  const nwFamily = ['NW', 'NNW', 'WNW'];
+
+  const roughWind = Number.isFinite(windSpeed) && (
+    (nwFamily.includes(windDirection) && windSpeed > 10)
+    || windSpeed >= 15
+  );
+
+  if (!roughWind && !severePrecip) return null;
+
+  return {
+    text: 'Seals unlikely: wind/rough seas',
+    priority: 5
+  };
+}
+
+function isSealSeason(date = new Date()) {
+  const month = date.getMonth();
+  const day = date.getDate();
+
+  if ([0, 1, 2, 3, 11].includes(month)) return true;
+  return month === 10 && day >= 20;
+}
+
+function renderWeatherRange(periods, temperatureUnit) {
+  const range = findDailyTemperatureRange(periods);
+  if (!range) {
+    weatherRangeEl.innerHTML = '';
+    return;
+  }
+
+  weatherRangeEl.innerHTML = `
+    <div>Daytime High ${range.high.temperature}°${temperatureUnit} at ${formatHourLabel(range.high.startTime)}</div>
+    <div>Daytime Low ${range.low.temperature}°${temperatureUnit} at ${formatHourLabel(range.low.startTime)}</div>
+  `;
+}
+
+function findDailyTemperatureRange(periods) {
+  const candidates = getRangeCandidates(periods);
+  if (!candidates.length) return null;
+
+  let high = candidates[0];
+  let low = candidates[0];
+
+  for (const period of candidates.slice(1)) {
+    if (period.temperature > high.temperature) high = period;
+    if (period.temperature < low.temperature) low = period;
+  }
+
+  return { high, low };
+}
+
+function getRangeCandidates(periods) {
+  if (!Array.isArray(periods) || periods.length === 0) return [];
+
+  const validPeriods = periods.filter(period =>
+    Number.isFinite(period?.temperature) && !Number.isNaN(new Date(period.startTime).getTime())
+  );
+  if (!validPeriods.length) return [];
+
+  const now = new Date();
+  const daytimePeriods = validPeriods.filter(period => isDaytimeForecastHour(period.startTime, now));
+  return daytimePeriods.length ? daytimePeriods : validPeriods.slice(0, 24);
+}
+
+function isSameLocalDay(value, compareDate) {
+  const date = new Date(value);
+  return date.getFullYear() === compareDate.getFullYear()
+    && date.getMonth() === compareDate.getMonth()
+    && date.getDate() === compareDate.getDate();
+}
+
+function isDaytimeForecastHour(value, compareDate) {
+  if (!isSameLocalDay(value, compareDate)) return false;
+
+  const date = new Date(value);
+  const hour = date.getHours();
+  return hour >= 6 && hour < 18;
+}
+
+function formatHourLabel(value) {
+  return new Date(value).toLocaleTimeString([], { hour: 'numeric' });
 }
 
 async function loadAlerts(beach) {
@@ -512,10 +724,14 @@ function ripCurrentNote(alerts) {
 
     if (event.includes("rip") || event.includes("beach hazards")) {
 
-      if (desc.includes("high")) return "Rip risk: High";
-      if (desc.includes("moderate")) return "Rip risk: Moderate";
+      if (desc.includes("high")) {
+        return { text: 'Rip risk: High', priority: 2 };
+      }
+      if (desc.includes("moderate")) {
+        return { text: 'Rip risk: Moderate', priority: 2 };
+      }
 
-      return "Rip risk: Moderate";
+      return { text: 'Rip risk: Moderate', priority: 2 };
     }
   }
 

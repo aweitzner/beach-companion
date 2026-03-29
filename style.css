@@ -93,6 +93,11 @@ select, .button {
   display: grid;
   gap: 8px;
 }
+#notesList li {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .tide-item {
   display: flex;
   justify-content: space-between;
