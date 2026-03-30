@@ -15,15 +15,11 @@
     <header class="header">
       <div>
         <h1>Beach Companion</h1>
-        <p class="subhead">Sandy Hook and Belmar</p>
       </div>
+      <select id="beachSelect" aria-label="Beach"></select>
     </header>
 
-    <section class="card">
-      <label for="beachSelect">Beach</label>
-      <select id="beachSelect"></select>
-      <p id="status" class="status">Loading…</p>
-    </section>
+    <p id="status" class="status header-status">Loading…</p>
 
     <section id="beachNotes" class="card">
   <h2>Beach Notes</h2>
@@ -66,8 +62,19 @@
       <div id="moonPhase"></div>
       <div id="tideList" class="tide-list"></div>
     </section>
+
+    <section class="card">
+      <h2>Sun & Moon</h2>
+      <div class="astro-list">
+        <div class="astro-item"><span>Sunrise</span><span id="sunriseTime">--</span></div>
+        <div class="astro-item"><span>Sunset</span><span id="sunsetTime">--</span></div>
+        <div class="astro-item"><span>Moonrise</span><span id="moonriseTime">--</span></div>
+        <div class="astro-item"><span>Moonset</span><span id="moonsetTime">--</span></div>
+      </div>
+    </section>
   </main>
 
+  <script src="astronomy.browser.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
