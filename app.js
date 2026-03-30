@@ -1,4 +1,4 @@
-const APP_VERSION = 'v1.4.7';
+const APP_VERSION = 'v1.4.9';
 const BEACHES = [
   {
     id: 'sandy_hook',
@@ -67,6 +67,8 @@ const notesListEl = document.getElementById('notesList');
 const LAST_BEACH_KEY = 'beach-app-last-beach';
 const LAST_DAY_KEY = 'beach-app-selected-day';
 let latestAstronomy = null;
+let latestRangePeriods = [];
+let latestStrongestDaytimeWindSpeed = null;
 let activeDateKey = getLocalDateKey(new Date());
 let selectedDayKey = activeDateKey;
 
@@ -252,6 +254,7 @@ function buildBeachNotes(data) {
     windShiftNote(data.hourly),
     precipitation,
     sealNote(data.beach, data.current, precipitation, data.date),
+    clothingNote(data.date, data.range, data.strongestWindSpeed),
     fullMoonRiseNote(data.astronomy)
   ]
     .filter(Boolean)
@@ -449,6 +452,7 @@ async function loadBeach() {
   ]);
 
   const noteHours = getNotePeriodsForDate(latestHourlyPeriods, selectedDate);
+  const rangePeriods = latestRangePeriods.length ? latestRangePeriods : latestHourlyPeriods;
   const notes = buildBeachNotes({
     beach,
     current: getSummaryPeriod(latestHourlyPeriods, selectedDate),
@@ -456,7 +460,9 @@ async function loadBeach() {
     alerts: latestAlerts,
     astronomy: latestAstronomy,
     date: selectedDate,
-    isToday: isSameLocalDay(selectedDate, new Date())
+    isToday: isSameLocalDay(selectedDate, new Date()),
+    range: findDailyTemperatureRange(rangePeriods, selectedDate),
+    strongestWindSpeed: latestStrongestDaytimeWindSpeed
   });
   renderNotes(notes);
 
@@ -597,6 +603,127 @@ function convertCelsiusToFahrenheit(value) {
   return Math.round(((value * 9) / 5) + 32);
 }
 
+function getGridWindPeriods(values, selectedDate) {
+  if (!Array.isArray(values)) return [];
+
+  return values.flatMap(entry => {
+    if (!Number.isFinite(entry?.value)) return [];
+
+    const interval = parseValidTimeInterval(entry.validTime);
+    if (!interval) return [];
+
+    const points = [];
+    const hourMs = 60 * 60 * 1000;
+    const endTime = Math.max(interval.start.getTime() + hourMs, interval.end.getTime());
+
+    for (let ts = interval.start.getTime(); ts < endTime; ts += hourMs) {
+      const time = new Date(ts);
+      if (!isSameLocalDay(time, selectedDate)) continue;
+      points.push({
+        startTime: time.toISOString(),
+        windSpeedMph: convertWindToMph(entry.value, entry.unitCode)
+      });
+    }
+
+    return points;
+  });
+}
+
+function convertWindToMph(value, unitCode = '') {
+  const unit = String(unitCode).toLowerCase();
+  if (unit.includes('km_h-1') || unit.includes('km/h')) return Math.round(value * 0.621371);
+  if (unit.includes('kn')) return Math.round(value * 1.15078);
+  return Math.round(value);
+}
+
+function getStrongestDaytimeWindSpeed(gridWindPeriods, hourlyPeriods, selectedDate) {
+  const gridMax = gridWindPeriods.reduce((max, period) => {
+    return Number.isFinite(period.windSpeedMph) ? Math.max(max, period.windSpeedMph) : max;
+  }, -Infinity);
+  if (Number.isFinite(gridMax) && gridMax > -Infinity) return gridMax;
+
+  return getStrongestDaytimeWind(hourlyPeriods, selectedDate)?.speed ?? null;
+}
+
+function getClothingRecommendation(selectedDate, range, strongestWindSpeed) {
+  if (!range) return null;
+
+  const high = range.high.temperature;
+  const low = range.low.temperature;
+
+  if (!Number.isFinite(high) || !Number.isFinite(low)) return null;
+
+  const beachMode = isBeachMode(selectedDate);
+  const labels = beachMode
+    ? ['T-shirt', 'Long sleeve', 'Sweatshirt', 'Bring a blanket']
+    : ['Shorts', 'Sweatshirt', 'Need a coat', 'Bundle up'];
+
+  let level;
+
+  if (beachMode) {
+    if (high >= 80) level = 0;
+    else if (high >= 70) level = 1;
+    else if (high >= 60) level = 2;
+    else level = 3;
+
+    if (low < 50) level = 3;
+    else if (low < 60) level = Math.max(level, 2);
+  } else {
+    if (high >= 65) level = 0;
+    else if (high >= 55) level = 1;
+    else if (high >= 40) level = 2;
+    else level = 3;
+
+    if (low < 32) level = 3;
+    else if (low < 40) level = Math.max(level, 2);
+    else if (low < 50) level = Math.max(level, 1);
+  }
+
+  if (Number.isFinite(strongestWindSpeed) && strongestWindSpeed >= 15) {
+    level += 1;
+  }
+
+  level = Math.max(0, Math.min(level, labels.length - 1));
+  return labels[level];
+}
+
+function clothingNote(selectedDate, range, strongestWindSpeed) {
+  const clothing = getClothingRecommendation(selectedDate, range, strongestWindSpeed);
+  if (!clothing) return null;
+
+  return {
+    text: clothing,
+    priority: 6
+  };
+}
+
+function isBeachMode(date) {
+  const year = date.getFullYear();
+  const memorialDay = getLastWeekdayOfMonth(year, 4, 1);
+  const laborDay = getNthWeekdayOfMonth(year, 8, 1, 1);
+  const target = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  return target >= memorialDay && target <= laborDay;
+}
+
+function getLastWeekdayOfMonth(year, monthIndex, weekday) {
+  const date = new Date(year, monthIndex + 1, 0);
+  while (date.getDay() !== weekday) {
+    date.setDate(date.getDate() - 1);
+  }
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+function getNthWeekdayOfMonth(year, monthIndex, weekday, occurrence) {
+  const date = new Date(year, monthIndex, 1);
+  while (date.getDay() !== weekday) {
+    date.setDate(date.getDate() + 1);
+  }
+  date.setDate(date.getDate() + (occurrence - 1) * 7);
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
 function renderFutureDaySummary(rangePeriods, windPeriods, selectedDate, temperatureUnit) {
   const range = findDailyTemperatureRange(rangePeriods, selectedDate);
   const strongestWind = getStrongestDaytimeWind(windPeriods, selectedDate);
@@ -647,6 +774,10 @@ async function loadWeather(beach, selectedDate) {
   ]);
   latestHourlyPeriods = forecastData.properties.periods || [];
   const rangePeriods = getGridTemperaturePeriods(gridData?.properties?.temperature?.values, selectedDate);
+  const gridWindPeriods = getGridWindPeriods(gridData?.properties?.windSpeed?.values, selectedDate);
+  const strongestWindSpeed = getStrongestDaytimeWindSpeed(gridWindPeriods, latestHourlyPeriods, selectedDate);
+  latestRangePeriods = rangePeriods;
+  latestStrongestDaytimeWindSpeed = strongestWindSpeed;
   const summary = getSummaryPeriod(latestHourlyPeriods, selectedDate);
   if (!summary) {
     weatherCardTitleEl.textContent = isSameLocalDay(selectedDate, new Date()) ? 'Now' : 'Daytime';
@@ -820,7 +951,7 @@ function fullMoonRiseNote(astronomy) {
 
   return {
     text: 'Full moon rising after sunset',
-    priority: 6
+    priority: 7
   };
 }
 
