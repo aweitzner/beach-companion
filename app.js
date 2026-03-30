@@ -1,4 +1,4 @@
-const APP_VERSION = 'v1.4.6';
+const APP_VERSION = 'v1.4.7';
 const BEACHES = [
   {
     id: 'sandy_hook',
@@ -541,9 +541,65 @@ function getStrongestDaytimeWind(periods, selectedDate) {
   }, null);
 }
 
-function renderFutureDaySummary(periods, selectedDate, temperatureUnit) {
-  const range = findDailyTemperatureRange(periods, selectedDate);
-  const strongestWind = getStrongestDaytimeWind(periods, selectedDate);
+function getGridTemperaturePeriods(values, selectedDate) {
+  if (!Array.isArray(values)) return [];
+
+  return values.flatMap(entry => {
+    if (!Number.isFinite(entry?.value)) return [];
+
+    const interval = parseValidTimeInterval(entry.validTime);
+    if (!interval) return [];
+
+    const points = [];
+    const hourMs = 60 * 60 * 1000;
+    const endTime = Math.max(interval.start.getTime() + hourMs, interval.end.getTime());
+
+    for (let ts = interval.start.getTime(); ts < endTime; ts += hourMs) {
+      const time = new Date(ts);
+      if (!isSameLocalDay(time, selectedDate)) continue;
+      points.push({
+        startTime: time.toISOString(),
+        temperature: convertCelsiusToFahrenheit(entry.value)
+      });
+    }
+
+    return points;
+  });
+}
+
+function parseValidTimeInterval(validTime) {
+  if (typeof validTime !== 'string' || !validTime.includes('/')) return null;
+
+  const [startText, durationText] = validTime.split('/');
+  const start = new Date(startText);
+  if (Number.isNaN(start.getTime())) return null;
+
+  const durationMs = parseIsoDurationMs(durationText);
+  if (!Number.isFinite(durationMs) || durationMs <= 0) return null;
+
+  return {
+    start,
+    end: new Date(start.getTime() + durationMs)
+  };
+}
+
+function parseIsoDurationMs(durationText) {
+  const match = /^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?)?$/.exec(durationText || '');
+  if (!match) return null;
+
+  const days = Number(match[1] || 0);
+  const hours = Number(match[2] || 0);
+  const minutes = Number(match[3] || 0);
+  return (((days * 24) + hours) * 60 + minutes) * 60 * 1000;
+}
+
+function convertCelsiusToFahrenheit(value) {
+  return Math.round(((value * 9) / 5) + 32);
+}
+
+function renderFutureDaySummary(rangePeriods, windPeriods, selectedDate, temperatureUnit) {
+  const range = findDailyTemperatureRange(rangePeriods, selectedDate);
+  const strongestWind = getStrongestDaytimeWind(windPeriods, selectedDate);
 
   weatherCardTitleEl.textContent = 'Daytime';
   airLabelEl.textContent = 'High';
@@ -576,12 +632,21 @@ async function loadWeather(beach, selectedDate) {
   if (!pointsRes.ok) throw new Error('Weather points failed');
   const pointsData = await pointsRes.json();
 
-  const forecastRes = await fetch(pointsData.properties.forecastHourly, {
-    headers: { Accept: 'application/geo+json' }
-  });
+  const [forecastRes, gridRes] = await Promise.all([
+    fetch(pointsData.properties.forecastHourly, {
+      headers: { Accept: 'application/geo+json' }
+    }),
+    fetch(pointsData.properties.forecastGridData, {
+      headers: { Accept: 'application/geo+json' }
+    })
+  ]);
   if (!forecastRes.ok) throw new Error('Hourly forecast failed');
-  const forecastData = await forecastRes.json();
+  const [forecastData, gridData] = await Promise.all([
+    forecastRes.json(),
+    gridRes.ok ? gridRes.json() : Promise.resolve(null)
+  ]);
   latestHourlyPeriods = forecastData.properties.periods || [];
+  const rangePeriods = getGridTemperaturePeriods(gridData?.properties?.temperature?.values, selectedDate);
   const summary = getSummaryPeriod(latestHourlyPeriods, selectedDate);
   if (!summary) {
     weatherCardTitleEl.textContent = isSameLocalDay(selectedDate, new Date()) ? 'Now' : 'Daytime';
@@ -596,7 +661,12 @@ async function loadWeather(beach, selectedDate) {
   }
 
   if (!isSameLocalDay(selectedDate, new Date())) {
-    renderFutureDaySummary(latestHourlyPeriods, selectedDate, summary.temperatureUnit);
+    renderFutureDaySummary(
+      rangePeriods.length ? rangePeriods : latestHourlyPeriods,
+      latestHourlyPeriods,
+      selectedDate,
+      summary.temperatureUnit
+    );
     return;
   }
 
@@ -607,7 +677,11 @@ async function loadWeather(beach, selectedDate) {
   windEl.textContent = `${summary.windDirection} ${summary.windSpeed}`;
   renderWeatherFeels(summary);
   weatherUpdatedEl.textContent = `Forecast starts ${formatDateTime(summary.startTime)}`;
-  renderWeatherRange(latestHourlyPeriods, selectedDate, summary.temperatureUnit);
+  renderWeatherRange(
+    rangePeriods.length ? rangePeriods : latestHourlyPeriods,
+    selectedDate,
+    summary.temperatureUnit
+  );
 }
 
 function renderWeatherFeels(period) {
