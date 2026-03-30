@@ -45,6 +45,9 @@ const BEACHES = [
 const beachSelect = document.getElementById('beachSelect');
 const daySelectorEl = document.getElementById('daySelector');
 const statusEl = document.getElementById('status');
+const weatherCardTitleEl = document.getElementById('weatherCardTitle');
+const airLabelEl = document.getElementById('airLabel');
+const windLabelEl = document.getElementById('windLabel');
 const airTempEl = document.getElementById('airTemp');
 const windEl = document.getElementById('wind');
 const weatherUpdatedEl = document.getElementById('weatherUpdated');
@@ -56,6 +59,7 @@ const sunriseTimeEl = document.getElementById('sunriseTime');
 const sunsetTimeEl = document.getElementById('sunsetTime');
 const moonriseTimeEl = document.getElementById('moonriseTime');
 const moonsetTimeEl = document.getElementById('moonsetTime');
+const tidesTitleEl = document.getElementById('tidesTitle');
 const nextTideEl = document.getElementById('nextTide');
 const moonPhaseEl = document.getElementById('moonPhase');
 const tideListEl = document.getElementById('tideList');
@@ -431,6 +435,9 @@ async function loadBeach() {
   const beach = getSelectedBeach();
   const selectedDate = getSelectedDate();
   statusEl.textContent = `Loading ${beach.displayName}…`;
+  tidesTitleEl.textContent = isSameLocalDay(selectedDate, new Date())
+    ? 'Tides Today'
+    : `Tides ${formatShortDate(selectedDate)}`;
   latestAstronomy = calculateAstronomy(beach, selectedDate);
   renderAstronomy(latestAstronomy);
 
@@ -488,7 +495,9 @@ function getForecastPeriodsForDate(periods, selectedDate) {
 function getNotePeriodsForDate(periods, selectedDate) {
   const dayPeriods = getForecastPeriodsForDate(periods, selectedDate);
   if (!dayPeriods.length) return [];
-  if (!isSameLocalDay(selectedDate, new Date())) return dayPeriods;
+  if (!isSameLocalDay(selectedDate, new Date())) {
+    return dayPeriods.filter(period => isDaytimeForecastHour(period.startTime, selectedDate));
+  }
 
   const now = new Date();
   return dayPeriods.filter(period => new Date(period.startTime) >= now);
@@ -515,6 +524,51 @@ function getSummaryPeriod(periods, selectedDate) {
   }, null);
 }
 
+function getStrongestDaytimeWind(periods, selectedDate) {
+  const daytimePeriods = getRangeCandidates(periods, selectedDate);
+  if (!daytimePeriods.length) return null;
+
+  return daytimePeriods.reduce((strongest, period) => {
+    const speed = parseWindSpeed(period.windSpeed);
+    if (!Number.isFinite(speed)) return strongest;
+    if (!strongest || speed > strongest.speed) {
+      return {
+        speed,
+        period
+      };
+    }
+    return strongest;
+  }, null);
+}
+
+function renderFutureDaySummary(periods, selectedDate, temperatureUnit) {
+  const range = findDailyTemperatureRange(periods, selectedDate);
+  const strongestWind = getStrongestDaytimeWind(periods, selectedDate);
+
+  weatherCardTitleEl.textContent = 'Daytime';
+  airLabelEl.textContent = 'High';
+  windLabelEl.textContent = 'Low';
+  weatherFeelsEl.textContent = strongestWind
+    ? `Strongest daytime wind: ${strongestWind.period.windDirection} ${strongestWind.period.windSpeed}`
+    : '';
+
+  if (!range) {
+    airTempEl.textContent = '--';
+    windEl.textContent = '--';
+    weatherUpdatedEl.textContent = 'No daytime forecast data for selected day.';
+    weatherRangeEl.innerHTML = '';
+    return;
+  }
+
+  airTempEl.textContent = `${range.high.temperature}°${temperatureUnit}`;
+  windEl.textContent = `${range.low.temperature}°${temperatureUnit}`;
+  weatherUpdatedEl.innerHTML = `
+    <div>High at ${formatTimeNoSeconds(range.high.startTime)}</div>
+    <div>Low at ${formatTimeNoSeconds(range.low.startTime)}</div>
+  `;
+  weatherRangeEl.innerHTML = '';
+}
+
 async function loadWeather(beach, selectedDate) {
   const pointsRes = await fetch(`https://api.weather.gov/points/${beach.lat},${beach.lon}`, {
     headers: { Accept: 'application/geo+json' }
@@ -530,6 +584,9 @@ async function loadWeather(beach, selectedDate) {
   latestHourlyPeriods = forecastData.properties.periods || [];
   const summary = getSummaryPeriod(latestHourlyPeriods, selectedDate);
   if (!summary) {
+    weatherCardTitleEl.textContent = isSameLocalDay(selectedDate, new Date()) ? 'Now' : 'Daytime';
+    airLabelEl.textContent = isSameLocalDay(selectedDate, new Date()) ? 'Air' : 'High';
+    windLabelEl.textContent = isSameLocalDay(selectedDate, new Date()) ? 'Wind' : 'Low';
     airTempEl.textContent = '--';
     windEl.textContent = '--';
     weatherFeelsEl.textContent = '';
@@ -538,12 +595,18 @@ async function loadWeather(beach, selectedDate) {
     return;
   }
 
+  if (!isSameLocalDay(selectedDate, new Date())) {
+    renderFutureDaySummary(latestHourlyPeriods, selectedDate, summary.temperatureUnit);
+    return;
+  }
+
+  weatherCardTitleEl.textContent = 'Now';
+  airLabelEl.textContent = 'Air';
+  windLabelEl.textContent = 'Wind';
   airTempEl.textContent = `${summary.temperature}°${summary.temperatureUnit}`;
   windEl.textContent = `${summary.windDirection} ${summary.windSpeed}`;
   renderWeatherFeels(summary);
-  weatherUpdatedEl.textContent = isSameLocalDay(selectedDate, new Date())
-    ? `Forecast starts ${formatDateTime(summary.startTime)}`
-    : `Summary around ${formatTimeNoSeconds(summary.startTime)}`;
+  weatherUpdatedEl.textContent = `Forecast starts ${formatDateTime(summary.startTime)}`;
   renderWeatherRange(latestHourlyPeriods, selectedDate, summary.temperatureUnit);
 }
 
