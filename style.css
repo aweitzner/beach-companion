@@ -39,6 +39,44 @@ h2 { font-size: 1.2rem; margin-bottom: 12px; }
 .header-status {
   margin: 0 0 12px;
 }
+.day-strip {
+  margin: 0 0 12px;
+}
+.day-selector {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(84px, 1fr);
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+.day-button {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: #f8fafc;
+  color: var(--text);
+  border-radius: 14px;
+  padding: 10px 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.day-button strong,
+.day-button span {
+  display: block;
+}
+.day-button strong {
+  font-size: 0.98rem;
+}
+.day-button span {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+.day-button.is-selected {
+  border-color: #0f766e;
+  background: #ecfeff;
+  box-shadow: inset 0 0 0 1px #0f766e;
+}
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -164,6 +202,14 @@ select, .button {
 
   .updated, .status, .subhead, label, .tide-item {
     font-size: 1rem;
+  }
+
+  .day-button strong {
+    font-size: 0.95rem;
+  }
+
+  .day-button span {
+    font-size: 0.84rem;
   }
 
   .next-tide {
