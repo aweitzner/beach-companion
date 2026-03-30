@@ -1,20 +1,44 @@
-const APP_VERSION = 'v1.3.7';
+const APP_VERSION = 'v1.4.5';
 const BEACHES = [
   {
-    id: 'sandy-hook',
-    name: 'Sandy Hook',
-    lat: 40.466,
-    lon: -74.009,
-    tideStation: '8531680',
-    waterTempStation: '8531680'
+    id: 'sandy_hook',
+    displayName: 'Sandy Hook, NJ',
+    lat: 40.4668,
+    lon: -74.0093,
+    tideStationId: '8531680',
+    waterTempStationId: '8531680'
   },
   {
     id: 'belmar',
-    name: 'Belmar Beach',
-    lat: 40.178,
-    lon: -74.021,
-    tideStation: '8532337',
-    waterTempStation: '8531680'
+    displayName: 'Belmar, NJ',
+    lat: 40.1784,
+    lon: -74.0210,
+    tideStationId: '8532337',
+    waterTempStationId: '8532337'
+  },
+  {
+    id: 'asbury_park',
+    displayName: 'Asbury Park, NJ',
+    lat: 40.2204,
+    lon: -73.9982,
+    tideStationId: '8532337',
+    waterTempStationId: '8532337'
+  },
+  {
+    id: 'cape_may',
+    displayName: 'Cape May, NJ',
+    lat: 38.9351,
+    lon: -74.9060,
+    tideStationId: '8536110',
+    waterTempStationId: '8536110'
+  },
+  {
+    id: 'bar_harbor',
+    displayName: 'Bar Harbor, ME',
+    lat: 44.3876,
+    lon: -68.2039,
+    tideStationId: '8413320',
+    waterTempStationId: '8413320'
   }
 ];
 
@@ -27,11 +51,17 @@ const weatherFeelsEl = ensureWeatherFeelsEl();
 const weatherRangeEl = ensureWeatherRangeEl();
 const waterTempEl = document.getElementById('waterTemp');
 const waterUpdatedEl = document.getElementById('waterUpdated');
+const sunriseTimeEl = document.getElementById('sunriseTime');
+const sunsetTimeEl = document.getElementById('sunsetTime');
+const moonriseTimeEl = document.getElementById('moonriseTime');
+const moonsetTimeEl = document.getElementById('moonsetTime');
 const nextTideEl = document.getElementById('nextTide');
 const moonPhaseEl = document.getElementById('moonPhase');
 const tideListEl = document.getElementById('tideList');
 const notesListEl = document.getElementById('notesList');
 const LAST_BEACH_KEY = 'beach-app-last-beach';
+let latestAstronomy = null;
+let activeDateKey = getLocalDateKey(new Date());
 
 // --- Helpers ---
 function dirToDeg(dir) {
@@ -149,7 +179,9 @@ function precipitationNote(hours) {
     if (Number.isNaN(forecastTime.getTime())) continue;
     if (forecastTime < now) continue;
     if (!isSameLocalDay(forecastTime, now)) continue;
-    if (h.probabilityOfPrecipitation?.value < threshold) continue;
+    const precipProbability = getValidPrecipProbability(h);
+    if (precipProbability == null) continue;
+    if (precipProbability < threshold) continue;
 
     const severity = getPrecipSeverity(h.shortForecast);
     if (!severity) continue;
@@ -183,6 +215,11 @@ function precipitationNote(hours) {
   };
 }
 
+function getValidPrecipProbability(period) {
+  const value = period?.probabilityOfPrecipitation?.value;
+  return Number.isFinite(value) ? value : null;
+}
+
 function rankSeverity(severity) {
   return {
     "Thunderstorms": 4,
@@ -209,7 +246,8 @@ function buildBeachNotes(data) {
     ripCurrentNote(data.alerts),
     windShiftNote(data.hourly),
     precipitation,
-    sealNote(data.beach, data.current, precipitation)
+    sealNote(data.beach, data.current, precipitation),
+    fullMoonRiseNote(data.astronomy)
   ]
     .filter(Boolean)
     .sort((a, b) => a.priority - b.priority)
@@ -221,15 +259,16 @@ function buildBeachNotes(data) {
 function init() {
   addVersionTag();
   ensureTideChartContainer();
+  startDateRolloverWatcher();
 
   BEACHES.forEach(beach => {
     const option = document.createElement('option');
     option.value = beach.id;
-    option.textContent = beach.name;
+    option.textContent = beach.displayName;
     beachSelect.appendChild(option);
   });
 
-  const savedBeach = localStorage.getItem(LAST_BEACH_KEY);
+  const savedBeach = normalizeBeachId(localStorage.getItem(LAST_BEACH_KEY));
   if (savedBeach && BEACHES.some(b => b.id === savedBeach)) {
     beachSelect.value = savedBeach;
   }
@@ -244,6 +283,11 @@ function init() {
   });
 
   loadBeach();
+}
+
+function normalizeBeachId(value) {
+  if (value === 'sandy-hook') return 'sandy_hook';
+  return value;
 }
 
 function addVersionTag() {
@@ -329,29 +373,45 @@ function getSelectedBeach() {
 
 async function loadBeach() {
   const beach = getSelectedBeach();
-  statusEl.textContent = `Loading ${beach.name}…`;
-  try {
-    await Promise.all([
-      loadWeather(beach),
-      loadTides(beach),
-      loadWaterTemp(beach),
-      loadAlerts(beach) 
-    ]);
-    
-const notes = buildBeachNotes({
+  statusEl.textContent = `Loading ${beach.displayName}…`;
+  latestAstronomy = calculateAstronomy(beach);
+  renderAstronomy(latestAstronomy);
+
+  const results = await Promise.allSettled([
+    loadWeather(beach),
+    loadTides(beach),
+    loadWaterTemp(beach),
+    loadAlerts(beach)
+  ]);
+
+  const notes = buildBeachNotes({
     beach,
     current: latestHourlyPeriods[0],
     hourly: latestHourlyPeriods,
-    alerts: latestAlerts 
+    alerts: latestAlerts,
+    astronomy: latestAstronomy
   });
   renderNotes(notes);
 
-    moonPhaseEl.textContent = `Moon: ${getMoonPhase()}`;
-    statusEl.textContent = `${beach.name} updated.`;
-  } catch (error) {
-    console.error(error);
+  moonPhaseEl.textContent = `Moon: ${getMoonPhase(latestAstronomy?.date || new Date())}`;
+
+  const failed = results.filter(result => result.status === 'rejected');
+  if (failed.length) {
+    failed.forEach(result => console.error(result.reason));
     statusEl.textContent = 'Some data failed to load. Try refresh.';
+    return;
   }
+
+  statusEl.textContent = `${beach.displayName} updated.`;
+}
+
+function startDateRolloverWatcher() {
+  window.setInterval(() => {
+    const nextDateKey = getLocalDateKey(new Date());
+    if (nextDateKey === activeDateKey) return;
+    activeDateKey = nextDateKey;
+    loadBeach();
+  }, 60 * 1000);
 }
 
 async function loadWeather(beach) {
@@ -384,8 +444,8 @@ function renderWeatherFeels(period) {
 
 function getBeachComfortLabel(period) {
   const temperature = period?.temperature;
-  const humidity = period?.relativeHumidity?.value;
   const windSpeed = parseWindSpeed(period?.windSpeed);
+  const dewPoint = getDewPointFahrenheit(period);
 
   if (!Number.isFinite(temperature)) {
     return null;
@@ -416,22 +476,18 @@ function getBeachComfortLabel(period) {
     }
   }
 
-  if (temperature >= 75 && Number.isFinite(humidity)) {
-    if (humidity >= 80) {
-      level += 2;
-    } else if (humidity >= 70) {
-      level += 1;
-    }
-  }
-
   level = Math.max(0, Math.min(level, labels.length - 1));
   const label = labels[level];
 
-  if (label === 'Hot' && humidity >= 70) {
-    return 'Hot & humid';
+  if (temperature < 75 || !Number.isFinite(dewPoint)) {
+    return label;
   }
 
-  return label;
+  const descriptor = getDewPointDescriptor(dewPoint);
+  if (!descriptor) return label;
+  if (label === 'Oppressive' && descriptor === 'oppressive') return 'Oppressive';
+
+  return `${label} (${descriptor})`;
 }
 
 function getBaseComfortLevel(temperature) {
@@ -458,8 +514,36 @@ function parseWindSpeed(value) {
   return Math.max(...speeds);
 }
 
+function getDewPointFahrenheit(period) {
+  const dewPoint = period?.dewpoint;
+
+  if (Number.isFinite(dewPoint)) {
+    return dewPoint;
+  }
+
+  if (!dewPoint || !Number.isFinite(dewPoint.value)) {
+    return null;
+  }
+
+  const unitCode = String(dewPoint.unitCode || '').toLowerCase();
+  if (unitCode.includes('degc') || unitCode.endsWith(':c')) {
+    return (dewPoint.value * 9) / 5 + 32;
+  }
+
+  return dewPoint.value;
+}
+
+function getDewPointDescriptor(dewPoint) {
+  if (!Number.isFinite(dewPoint)) return null;
+  if (dewPoint < 55) return 'dry';
+  if (dewPoint <= 60) return 'slightly humid';
+  if (dewPoint <= 65) return 'muggy';
+  if (dewPoint <= 70) return 'very muggy';
+  return 'oppressive';
+}
+
 function sealNote(beach, currentPeriod, precipitation) {
-  if (beach?.id !== 'sandy-hook') return null;
+  if (beach?.id !== 'sandy_hook') return null;
   if (!isSealSeason()) return null;
 
   const windDirection = String(currentPeriod?.windDirection || '').toUpperCase();
@@ -478,6 +562,58 @@ function sealNote(beach, currentPeriod, precipitation) {
     text: 'Seals unlikely: wind/rough seas',
     priority: 5
   };
+}
+
+function fullMoonRiseNote(astronomy) {
+  if (!astronomy) return null;
+  if (getMoonPhaseName(astronomy.date) !== 'Full Moon') return null;
+  if (!(astronomy.moonrise instanceof Date)) return null;
+  if (!(astronomy.sunset instanceof Date)) return null;
+  if (astronomy.moonrise <= astronomy.sunset) return null;
+
+  return {
+    text: 'Full moon rising after sunset',
+    priority: 6
+  };
+}
+
+function calculateAstronomy(beach, date = new Date()) {
+  const observer = new Astronomy.Observer(beach.lat, beach.lon, 0);
+  const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const nextDay = new Date(dayStart);
+  nextDay.setDate(nextDay.getDate() + 1);
+
+  return {
+    date: dayStart,
+    sunrise: findRiseSet(Astronomy.Body.Sun, observer, dayStart, nextDay, 1),
+    sunset: findRiseSet(Astronomy.Body.Sun, observer, dayStart, nextDay, -1),
+    moonrise: findRiseSet(Astronomy.Body.Moon, observer, dayStart, nextDay, 1),
+    moonset: findRiseSet(Astronomy.Body.Moon, observer, dayStart, nextDay, -1)
+  };
+}
+
+function findRiseSet(body, observer, dayStart, nextDay, direction) {
+  try {
+    const event = Astronomy.SearchRiseSet(body, observer, direction, dayStart, 1);
+    const eventDate = event?.date instanceof Date ? event.date : null;
+    if (!eventDate) return null;
+    if (eventDate < dayStart || eventDate >= nextDay) return null;
+    return eventDate;
+  } catch (error) {
+    console.error('Astronomy calculation failed', error);
+    return null;
+  }
+}
+
+function renderAstronomy(astronomy) {
+  sunriseTimeEl.textContent = formatEventTime(astronomy?.sunrise);
+  sunsetTimeEl.textContent = formatEventTime(astronomy?.sunset);
+  moonriseTimeEl.textContent = formatEventTime(astronomy?.moonrise);
+  moonsetTimeEl.textContent = formatEventTime(astronomy?.moonset);
+}
+
+function formatEventTime(value) {
+  return value instanceof Date ? formatTimeNoSeconds(value) : '—';
 }
 
 function isSealSeason(date = new Date()) {
@@ -562,24 +698,39 @@ async function loadAlerts(beach) {
 }
 
 
-function getMoonPhase(date = new Date()) {
-
+function getMoonPhaseName(date = new Date()) {
   const synodicMonth = 29.53058867;
   const knownNewMoon = new Date('2000-01-06T18:14:00Z');
 
   const days = (date - knownNewMoon) / 86400000;
   const age = days % synodicMonth;
 
-  if (age < 1.84566) return "🌑 New Moon";
-  if (age < 5.53699) return "🌒 Waxing Crescent";
-  if (age < 9.22831) return "🌓 First Quarter";
-  if (age < 12.91963) return "🌔 Waxing Gibbous";
-  if (age < 16.61096) return "🌕 Full Moon";
-  if (age < 20.30228) return "🌖 Waning Gibbous";
-  if (age < 23.99361) return "🌗 Last Quarter";
-  if (age < 27.68493) return "🌘 Waning Crescent";
+  if (age < 1.84566) return 'New Moon';
+  if (age < 5.53699) return 'Waxing Crescent';
+  if (age < 9.22831) return 'First Quarter';
+  if (age < 12.91963) return 'Waxing Gibbous';
+  if (age < 16.61096) return 'Full Moon';
+  if (age < 20.30228) return 'Waning Gibbous';
+  if (age < 23.99361) return 'Last Quarter';
+  if (age < 27.68493) return 'Waning Crescent';
 
-  return "🌑 New Moon";
+  return 'New Moon';
+}
+
+function getMoonPhase(date = new Date()) {
+  const phase = getMoonPhaseName(date);
+  const icons = {
+    'New Moon': '🌑',
+    'Waxing Crescent': '🌒',
+    'First Quarter': '🌓',
+    'Waxing Gibbous': '🌔',
+    'Full Moon': '🌕',
+    'Waning Gibbous': '🌖',
+    'Last Quarter': '🌗',
+    'Waning Crescent': '🌘'
+  };
+
+  return `${icons[phase]} ${phase}`;
 }
 
 async function loadTides(beach) {
@@ -587,8 +738,8 @@ async function loadTides(beach) {
   const beginDate = formatYmd(today);
   const endDate = formatYmd(today);
 
-  const hiloUrl = `https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?product=predictions&application=beach-app&begin_date=${beginDate}&end_date=${endDate}&datum=MLLW&station=${beach.tideStation}&time_zone=lst_ldt&interval=hilo&units=english&format=json`;
-  const curveStation = beach.id === 'belmar' ? '8531680' : beach.tideStation;
+  const hiloUrl = `https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?product=predictions&application=beach-app&begin_date=${beginDate}&end_date=${endDate}&datum=MLLW&station=${beach.tideStationId}&time_zone=lst_ldt&interval=hilo&units=english&format=json`;
+  const curveStation = usesReferenceCurve(beach) ? '8531680' : beach.tideStationId;
   const curveUrl = `https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?product=predictions&application=beach-app&begin_date=${beginDate}&end_date=${endDate}&datum=MLLW&station=${curveStation}&time_zone=lst_ldt&interval=6&units=english&format=json`;
 
   const [hiloRes, curveRes] = await Promise.all([fetch(hiloUrl), fetch(curveUrl)]);
@@ -620,7 +771,7 @@ async function loadTides(beach) {
     tideListEl.appendChild(item);
   });
 
-  if (beach.id === 'belmar' && curvePoints.length) {
+  if (usesReferenceCurve(beach) && curvePoints.length) {
     curvePoints = transformReferenceCurveForBelmar(curvePoints);
   }
 
@@ -632,75 +783,18 @@ async function loadTides(beach) {
 }
 
 function buildCurveFromHiLo(predictions) {
-  const parsed = predictions
+  return predictions
     .map(p => ({
-      t: new Date(p.t),
-      v: Number.parseFloat(p.v),
-      type: p.type
+      t: p.t,
+      v: p.v
     }))
-    .filter(p => !Number.isNaN(p.t.getTime()) && Number.isFinite(p.v));
-
-  if (parsed.length < 2) return [];
-
-  const points = [];
-  const sixMinutesMs = 6 * 60 * 1000;
-  const dayStart = new Date(parsed[0].t);
-  dayStart.setHours(0, 0, 0, 0);
-  const dayEnd = new Date(dayStart);
-  dayEnd.setHours(24, 0, 0, 0);
-
-  const anchors = [...parsed];
-
-  if (anchors[0].t > dayStart && anchors.length >= 2) {
-    const next = anchors[0];
-    const after = anchors[1];
-    anchors.unshift({
-      t: dayStart,
-      v: estimateBoundaryValue(dayStart, next, after)
-    });
-  }
-
-  const last = anchors[anchors.length - 1];
-  if (last.t < dayEnd && anchors.length >= 2) {
-    const prev = anchors[anchors.length - 2];
-    anchors.push({
-      t: dayEnd,
-      v: estimateBoundaryValue(dayEnd, prev, last)
-    });
-  }
-
-  for (let i = 0; i < anchors.length - 1; i++) {
-    const start = anchors[i];
-    const end = anchors[i + 1];
-    const span = end.t.getTime() - start.t.getTime();
-    if (span <= 0) continue;
-
-    for (let ts = start.t.getTime(); ts < end.t.getTime(); ts += sixMinutesMs) {
-      const progress = (ts - start.t.getTime()) / span;
-      const eased = 0.5 - 0.5 * Math.cos(Math.PI * progress);
-      const value = start.v + (end.v - start.v) * eased;
-      points.push({
-        t: new Date(ts).toISOString().slice(0, 19),
-        v: value.toFixed(2)
-      });
-    }
-  }
-
-  const finalAnchor = anchors[anchors.length - 1];
-  points.push({
-    t: finalAnchor.t.toISOString().slice(0, 19),
-    v: finalAnchor.v.toFixed(2)
-  });
-
-  return points;
+    .filter(p => !Number.isNaN(new Date(p.t).getTime()) && Number.isFinite(Number.parseFloat(p.v)));
 }
 
-function estimateBoundaryValue(boundary, a, b) {
-  const total = b.t.getTime() - a.t.getTime();
-  if (total <= 0) return a.v;
-  const ratio = (boundary.getTime() - a.t.getTime()) / total;
-  return a.v + (b.v - a.v) * ratio;
+function usesReferenceCurve(beach) {
+  return beach?.id === 'belmar' || beach?.id === 'asbury_park';
 }
+
 function transformReferenceCurveForBelmar(points) {
   const minutesShift = 35;
   const heightScale = 0.95;
@@ -743,15 +837,37 @@ function ripCurrentNote(alerts) {
 }
 
 async function loadWaterTemp(beach) {
-  const url = `https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?product=water_temperature&application=beach-app&station=${beach.waterTempStation}&date=latest&units=english&time_zone=lst_ldt&format=json`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error('Water temp failed');
-  const data = await res.json();
-  const reading = data.data?.[0];
-  if (!reading?.v) throw new Error('No water temp in feed');
+  const stationIds = getWaterTempStationCandidates(beach);
+  let lastError = null;
 
-  waterTempEl.textContent = `${reading.v}°F`;
-  waterUpdatedEl.textContent = `NOAA station ${beach.waterTempStation} at ${formatDateTime(reading.t)}`;
+  for (const stationId of stationIds) {
+    try {
+      const url = `https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?product=water_temperature&application=beach-app&station=${stationId}&date=latest&units=english&time_zone=lst_ldt&format=json`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('Water temp failed');
+      const data = await res.json();
+      const reading = data.data?.[0];
+      if (!reading?.v) throw new Error('No water temp in feed');
+
+      waterTempEl.textContent = `${reading.v}°F`;
+      waterUpdatedEl.textContent = `NOAA station ${stationId} at ${formatDateTime(reading.t)}`;
+      return;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError || new Error('Water temp failed');
+}
+
+function getWaterTempStationCandidates(beach) {
+  const candidates = [beach.waterTempStationId];
+
+  if (beach?.id === 'belmar' || beach?.id === 'asbury_park') {
+    candidates.push('8531680');
+  }
+
+  return [...new Set(candidates)];
 }
 
 function renderTideChart(points, beach) {
@@ -834,7 +950,7 @@ const xTickHours = [0, 6, 12, 18, 24].map(h => {
 }).join('');
 
 chartEl.innerHTML = `
-<svg viewBox="0 0 ${width} ${height}" style="width:100%; height:auto; display:block;" role="img" aria-label="Today's tide curve for ${beach.name}">      <defs>
+<svg viewBox="0 0 ${width} ${height}" style="width:100%; height:auto; display:block;" role="img" aria-label="Today's tide curve for ${beach.displayName}">      <defs>
         <linearGradient id="tideFill" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stop-color="#93c5fd" stop-opacity="0.65" />
           <stop offset="100%" stop-color="#dbeafe" stop-opacity="0.2" />
@@ -860,6 +976,10 @@ function formatLocalTime(value) {
   return new Date(value).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
+function formatTimeNoSeconds(value) {
+  return new Date(value).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
 function formatDateTime(value) {
   return new Date(value).toLocaleString([], {
     month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
@@ -868,6 +988,10 @@ function formatDateTime(value) {
 
 function formatYmd(date) {
   return [date.getFullYear(), pad(date.getMonth() + 1), pad(date.getDate())].join('');
+}
+
+function getLocalDateKey(date) {
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
 function pad(value) {
