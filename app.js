@@ -1,4 +1,4 @@
-const APP_VERSION = 'v1.4.5';
+const APP_VERSION = 'v1.4.6';
 const BEACHES = [
   {
     id: 'sandy_hook',
@@ -43,6 +43,7 @@ const BEACHES = [
 ];
 
 const beachSelect = document.getElementById('beachSelect');
+const daySelectorEl = document.getElementById('daySelector');
 const statusEl = document.getElementById('status');
 const airTempEl = document.getElementById('airTemp');
 const windEl = document.getElementById('wind');
@@ -60,8 +61,10 @@ const moonPhaseEl = document.getElementById('moonPhase');
 const tideListEl = document.getElementById('tideList');
 const notesListEl = document.getElementById('notesList');
 const LAST_BEACH_KEY = 'beach-app-last-beach';
+const LAST_DAY_KEY = 'beach-app-selected-day';
 let latestAstronomy = null;
 let activeDateKey = getLocalDateKey(new Date());
+let selectedDayKey = activeDateKey;
 
 // --- Helpers ---
 function dirToDeg(dir) {
@@ -177,8 +180,6 @@ function precipitationNote(hours) {
   for (const h of hours) {
     const forecastTime = new Date(h.startTime);
     if (Number.isNaN(forecastTime.getTime())) continue;
-    if (forecastTime < now) continue;
-    if (!isSameLocalDay(forecastTime, now)) continue;
     const precipProbability = getValidPrecipProbability(h);
     if (precipProbability == null) continue;
     if (precipProbability < threshold) continue;
@@ -243,10 +244,10 @@ function renderNotes(notes) {
 function buildBeachNotes(data) {
   const precipitation = precipitationNote(data.hourly);
   const notes = [
-    ripCurrentNote(data.alerts),
+    data.isToday ? ripCurrentNote(data.alerts) : null,
     windShiftNote(data.hourly),
     precipitation,
-    sealNote(data.beach, data.current, precipitation),
+    sealNote(data.beach, data.current, precipitation, data.date),
     fullMoonRiseNote(data.astronomy)
   ]
     .filter(Boolean)
@@ -254,6 +255,52 @@ function buildBeachNotes(data) {
     .slice(0, 3);
 
   return notes;
+}
+
+function getSelectableDates(baseDate = new Date()) {
+  const start = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate());
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(start);
+    date.setDate(start.getDate() + index);
+    return date;
+  });
+}
+
+function restoreSelectedDay() {
+  const validKeys = new Set(getSelectableDates().map(getLocalDateKey));
+  const saved = localStorage.getItem(LAST_DAY_KEY);
+  selectedDayKey = validKeys.has(saved) ? saved : getLocalDateKey(new Date());
+}
+
+function getSelectedDate() {
+  return getSelectableDates().find(date => getLocalDateKey(date) === selectedDayKey) || getSelectableDates()[0];
+}
+
+function isTodaySelected() {
+  return selectedDayKey === getLocalDateKey(new Date());
+}
+
+function renderDaySelector() {
+  const dates = getSelectableDates();
+  daySelectorEl.innerHTML = dates.map((date, index) => {
+    const dateKey = getLocalDateKey(date);
+    const label = index === 0 ? 'Today' : date.toLocaleDateString([], { weekday: 'short' });
+    const isSelected = dateKey === selectedDayKey;
+    return `
+      <button class="day-button${isSelected ? ' is-selected' : ''}" type="button" data-date-key="${dateKey}" aria-pressed="${isSelected}">
+        <strong>${label}</strong>
+        <span>${formatShortDate(date)}</span>
+      </button>
+    `;
+  }).join('');
+}
+
+function setSelectedDay(dateKey, { persist = true, reload = true } = {}) {
+  const validKeys = new Set(getSelectableDates().map(getLocalDateKey));
+  selectedDayKey = validKeys.has(dateKey) ? dateKey : getLocalDateKey(new Date());
+  renderDaySelector();
+  if (persist) localStorage.setItem(LAST_DAY_KEY, selectedDayKey);
+  if (reload) loadBeach();
 }
 
 function init() {
@@ -273,13 +320,22 @@ function init() {
     beachSelect.value = savedBeach;
   }
 
+  restoreSelectedDay();
+  renderDaySelector();
+
   if (!beachSelect.value) {
     beachSelect.value = BEACHES[0].id;
   }
 
   beachSelect.addEventListener('change', () => {
     localStorage.setItem(LAST_BEACH_KEY, beachSelect.value);
-    loadBeach();
+    setSelectedDay(selectedDayKey, { persist: true, reload: true });
+  });
+
+  daySelectorEl.addEventListener('click', event => {
+    const button = event.target.closest('.day-button');
+    if (!button) return;
+    setSelectedDay(button.dataset.dateKey, { persist: true, reload: true });
   });
 
   loadBeach();
@@ -373,23 +429,27 @@ function getSelectedBeach() {
 
 async function loadBeach() {
   const beach = getSelectedBeach();
+  const selectedDate = getSelectedDate();
   statusEl.textContent = `Loading ${beach.displayName}…`;
-  latestAstronomy = calculateAstronomy(beach);
+  latestAstronomy = calculateAstronomy(beach, selectedDate);
   renderAstronomy(latestAstronomy);
 
   const results = await Promise.allSettled([
-    loadWeather(beach),
-    loadTides(beach),
+    loadWeather(beach, selectedDate),
+    loadTides(beach, selectedDate),
     loadWaterTemp(beach),
     loadAlerts(beach)
   ]);
 
+  const noteHours = getNotePeriodsForDate(latestHourlyPeriods, selectedDate);
   const notes = buildBeachNotes({
     beach,
-    current: latestHourlyPeriods[0],
-    hourly: latestHourlyPeriods,
+    current: getSummaryPeriod(latestHourlyPeriods, selectedDate),
+    hourly: noteHours,
     alerts: latestAlerts,
-    astronomy: latestAstronomy
+    astronomy: latestAstronomy,
+    date: selectedDate,
+    isToday: isSameLocalDay(selectedDate, new Date())
   });
   renderNotes(notes);
 
@@ -410,11 +470,52 @@ function startDateRolloverWatcher() {
     const nextDateKey = getLocalDateKey(new Date());
     if (nextDateKey === activeDateKey) return;
     activeDateKey = nextDateKey;
+    const validKeys = new Set(getSelectableDates().map(getLocalDateKey));
+    if (!validKeys.has(selectedDayKey)) {
+      selectedDayKey = activeDateKey;
+      localStorage.setItem(LAST_DAY_KEY, selectedDayKey);
+    }
+    renderDaySelector();
     loadBeach();
   }, 60 * 1000);
 }
 
-async function loadWeather(beach) {
+function getForecastPeriodsForDate(periods, selectedDate) {
+  if (!Array.isArray(periods)) return [];
+  return periods.filter(period => isSameLocalDay(period.startTime, selectedDate));
+}
+
+function getNotePeriodsForDate(periods, selectedDate) {
+  const dayPeriods = getForecastPeriodsForDate(periods, selectedDate);
+  if (!dayPeriods.length) return [];
+  if (!isSameLocalDay(selectedDate, new Date())) return dayPeriods;
+
+  const now = new Date();
+  return dayPeriods.filter(period => new Date(period.startTime) >= now);
+}
+
+function getSummaryPeriod(periods, selectedDate) {
+  const dayPeriods = getForecastPeriodsForDate(periods, selectedDate);
+  if (!dayPeriods.length) return null;
+
+  if (isSameLocalDay(selectedDate, new Date())) {
+    return periods?.[0] || dayPeriods[0];
+  }
+
+  const target = new Date(selectedDate);
+  target.setHours(12, 0, 0, 0);
+  const daytimePeriods = dayPeriods.filter(period => isDaytimeForecastHour(period.startTime, selectedDate));
+  const pool = daytimePeriods.length ? daytimePeriods : dayPeriods;
+
+  return pool.reduce((closest, period) => {
+    if (!closest) return period;
+    const diff = Math.abs(new Date(period.startTime) - target);
+    const closestDiff = Math.abs(new Date(closest.startTime) - target);
+    return diff < closestDiff ? period : closest;
+  }, null);
+}
+
+async function loadWeather(beach, selectedDate) {
   const pointsRes = await fetch(`https://api.weather.gov/points/${beach.lat},${beach.lon}`, {
     headers: { Accept: 'application/geo+json' }
   });
@@ -427,14 +528,23 @@ async function loadWeather(beach) {
   if (!forecastRes.ok) throw new Error('Hourly forecast failed');
   const forecastData = await forecastRes.json();
   latestHourlyPeriods = forecastData.properties.periods || [];
-  const current = forecastData.properties.periods?.[0];
-  if (!current) throw new Error('No forecast periods returned');
+  const summary = getSummaryPeriod(latestHourlyPeriods, selectedDate);
+  if (!summary) {
+    airTempEl.textContent = '--';
+    windEl.textContent = '--';
+    weatherFeelsEl.textContent = '';
+    weatherRangeEl.innerHTML = '';
+    weatherUpdatedEl.textContent = 'No forecast data for selected day.';
+    return;
+  }
 
-  airTempEl.textContent = `${current.temperature}°${current.temperatureUnit}`;
-  windEl.textContent = `${current.windDirection} ${current.windSpeed}`;
-  renderWeatherFeels(current);
-  weatherUpdatedEl.textContent = `Forecast starts ${formatDateTime(current.startTime)}`;
-  renderWeatherRange(latestHourlyPeriods, current.temperatureUnit);
+  airTempEl.textContent = `${summary.temperature}°${summary.temperatureUnit}`;
+  windEl.textContent = `${summary.windDirection} ${summary.windSpeed}`;
+  renderWeatherFeels(summary);
+  weatherUpdatedEl.textContent = isSameLocalDay(selectedDate, new Date())
+    ? `Forecast starts ${formatDateTime(summary.startTime)}`
+    : `Summary around ${formatTimeNoSeconds(summary.startTime)}`;
+  renderWeatherRange(latestHourlyPeriods, selectedDate, summary.temperatureUnit);
 }
 
 function renderWeatherFeels(period) {
@@ -542,9 +652,9 @@ function getDewPointDescriptor(dewPoint) {
   return 'oppressive';
 }
 
-function sealNote(beach, currentPeriod, precipitation) {
+function sealNote(beach, currentPeriod, precipitation, date = new Date()) {
   if (beach?.id !== 'sandy_hook') return null;
-  if (!isSealSeason()) return null;
+  if (!isSealSeason(date)) return null;
 
   const windDirection = String(currentPeriod?.windDirection || '').toUpperCase();
   const windSpeed = parseWindSpeed(currentPeriod?.windSpeed);
@@ -624,8 +734,8 @@ function isSealSeason(date = new Date()) {
   return month === 10 && day >= 20;
 }
 
-function renderWeatherRange(periods, temperatureUnit) {
-  const range = findDailyTemperatureRange(periods);
+function renderWeatherRange(periods, selectedDate, temperatureUnit) {
+  const range = findDailyTemperatureRange(periods, selectedDate);
   if (!range) {
     weatherRangeEl.innerHTML = '';
     return;
@@ -637,8 +747,8 @@ function renderWeatherRange(periods, temperatureUnit) {
   `;
 }
 
-function findDailyTemperatureRange(periods) {
-  const candidates = getRangeCandidates(periods);
+function findDailyTemperatureRange(periods, selectedDate) {
+  const candidates = getRangeCandidates(periods, selectedDate);
   if (!candidates.length) return null;
 
   let high = candidates[0];
@@ -652,17 +762,14 @@ function findDailyTemperatureRange(periods) {
   return { high, low };
 }
 
-function getRangeCandidates(periods) {
-  if (!Array.isArray(periods) || periods.length === 0) return [];
-
-  const validPeriods = periods.filter(period =>
+function getRangeCandidates(periods, selectedDate) {
+  const dayPeriods = getForecastPeriodsForDate(periods, selectedDate).filter(period =>
     Number.isFinite(period?.temperature) && !Number.isNaN(new Date(period.startTime).getTime())
   );
-  if (!validPeriods.length) return [];
+  if (!dayPeriods.length) return [];
 
-  const now = new Date();
-  const daytimePeriods = validPeriods.filter(period => isDaytimeForecastHour(period.startTime, now));
-  return daytimePeriods.length ? daytimePeriods : validPeriods.slice(0, 24);
+  const daytimePeriods = dayPeriods.filter(period => isDaytimeForecastHour(period.startTime, selectedDate));
+  return daytimePeriods.length ? daytimePeriods : dayPeriods;
 }
 
 function isSameLocalDay(value, compareDate) {
@@ -733,10 +840,9 @@ function getMoonPhase(date = new Date()) {
   return `${icons[phase]} ${phase}`;
 }
 
-async function loadTides(beach) {
-  const today = new Date();
-  const beginDate = formatYmd(today);
-  const endDate = formatYmd(today);
+async function loadTides(beach, selectedDate) {
+  const beginDate = formatYmd(selectedDate);
+  const endDate = formatYmd(selectedDate);
 
   const hiloUrl = `https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?product=predictions&application=beach-app&begin_date=${beginDate}&end_date=${endDate}&datum=MLLW&station=${beach.tideStationId}&time_zone=lst_ldt&interval=hilo&units=english&format=json`;
   const curveStation = usesReferenceCurve(beach) ? '8531680' : beach.tideStationId;
@@ -753,13 +859,16 @@ async function loadTides(beach) {
   tideListEl.innerHTML = '';
   if (!predictions.length) {
     nextTideEl.textContent = 'No tide data available.';
-    renderTideChart([], beach);
+    renderTideChart([], beach, selectedDate);
     return;
   }
 
   const now = new Date();
-  const next = predictions.find(p => new Date(p.t) > now) || predictions[predictions.length - 1];
-  nextTideEl.textContent = `Next tide: ${tideLabel(next.type)} at ${formatLocalTime(next.t)}`;
+  const isToday = isSameLocalDay(selectedDate, now);
+  const next = isToday
+    ? predictions.find(p => new Date(p.t) > now) || predictions[predictions.length - 1]
+    : predictions[0];
+  nextTideEl.textContent = `${isToday ? 'Next tide' : 'First tide'}: ${tideLabel(next.type)} at ${formatLocalTime(next.t)}`;
 
   predictions.forEach(prediction => {
     const item = document.createElement('div');
@@ -779,7 +888,7 @@ async function loadTides(beach) {
     curvePoints = buildCurveFromHiLo(predictions);
   }
 
-  renderTideChart(curvePoints, beach);
+  renderTideChart(curvePoints, beach, selectedDate);
 }
 
 function buildCurveFromHiLo(predictions) {
@@ -870,7 +979,7 @@ function getWaterTempStationCandidates(beach) {
   return [...new Set(candidates)];
 }
 
-function renderTideChart(points, beach) {
+function renderTideChart(points, beach, selectedDate) {
   const chartEl = document.getElementById('tideChart');
   if (!chartEl) return;
 
@@ -918,7 +1027,7 @@ const innerHeight = height - pad.top - pad.bottom;
   const nowX = now >= new Date(minT) && now <= new Date(maxT) ? x(now.getTime()) : null;
 
   const yTicks = 4;
-  const axisStart = new Date();
+  const axisStart = new Date(selectedDate);
 axisStart.setHours(0, 0, 0, 0);
 
 const xTickHours = [0, 6, 12, 18, 24].map(h => {
@@ -950,7 +1059,7 @@ const xTickHours = [0, 6, 12, 18, 24].map(h => {
 }).join('');
 
 chartEl.innerHTML = `
-<svg viewBox="0 0 ${width} ${height}" style="width:100%; height:auto; display:block;" role="img" aria-label="Today's tide curve for ${beach.displayName}">      <defs>
+<svg viewBox="0 0 ${width} ${height}" style="width:100%; height:auto; display:block;" role="img" aria-label="Tide curve for ${beach.displayName} on ${formatLongDate(selectedDate)}">      <defs>
         <linearGradient id="tideFill" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stop-color="#93c5fd" stop-opacity="0.65" />
           <stop offset="100%" stop-color="#dbeafe" stop-opacity="0.2" />
@@ -978,6 +1087,14 @@ function formatLocalTime(value) {
 
 function formatTimeNoSeconds(value) {
   return new Date(value).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
+function formatShortDate(value) {
+  return new Date(value).toLocaleDateString([], { month: 'short', day: 'numeric' });
+}
+
+function formatLongDate(value) {
+  return new Date(value).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function formatDateTime(value) {
