@@ -151,6 +151,13 @@ select, .button {
   background: #f8fafc;
   font-size: 1rem;
 }
+.wind-chart {
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: #f8fafc;
+  padding: 8px;
+  min-height: 180px;
+}
 #notesList li {
   white-space: nowrap;
   overflow: hidden;

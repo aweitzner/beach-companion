@@ -1,4 +1,4 @@
-const APP_VERSION = 'v1.4.9';
+const APP_VERSION = 'v1.4.11';
 const BEACHES = [
   {
     id: 'sandy_hook',
@@ -59,6 +59,7 @@ const sunriseTimeEl = document.getElementById('sunriseTime');
 const sunsetTimeEl = document.getElementById('sunsetTime');
 const moonriseTimeEl = document.getElementById('moonriseTime');
 const moonsetTimeEl = document.getElementById('moonsetTime');
+const windChartEl = document.getElementById('windChart');
 const tidesTitleEl = document.getElementById('tidesTitle');
 const nextTideEl = document.getElementById('nextTide');
 const moonPhaseEl = document.getElementById('moonPhase');
@@ -619,6 +620,7 @@ function getGridWindPeriods(values, selectedDate) {
     for (let ts = interval.start.getTime(); ts < endTime; ts += hourMs) {
       const time = new Date(ts);
       if (!isSameLocalDay(time, selectedDate)) continue;
+      if (!isDaytimeForecastHour(time, selectedDate)) continue;
       points.push({
         startTime: time.toISOString(),
         windSpeedMph: convertWindToMph(entry.value, entry.unitCode)
@@ -636,6 +638,41 @@ function convertWindToMph(value, unitCode = '') {
   return Math.round(value);
 }
 
+function getGridWindDirectionPeriods(values, selectedDate) {
+  if (!Array.isArray(values)) return [];
+
+  return values.flatMap(entry => {
+    const directionDeg = parseWindDirectionValue(entry?.value);
+    if (!Number.isFinite(directionDeg)) return [];
+
+    const interval = parseValidTimeInterval(entry.validTime);
+    if (!interval) return [];
+
+    const points = [];
+    const hourMs = 60 * 60 * 1000;
+    const endTime = Math.max(interval.start.getTime() + hourMs, interval.end.getTime());
+
+    for (let ts = interval.start.getTime(); ts < endTime; ts += hourMs) {
+      const time = new Date(ts);
+      if (!isSameLocalDay(time, selectedDate)) continue;
+      if (!isDaytimeForecastHour(time, selectedDate)) continue;
+      points.push({
+        startTime: time.toISOString(),
+        directionDeg
+      });
+    }
+
+    return points;
+  });
+}
+
+function parseWindDirectionValue(value) {
+  if (Number.isFinite(value)) return ((value % 360) + 360) % 360;
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim().toUpperCase();
+  return dirToDeg(normalized);
+}
+
 function getStrongestDaytimeWindSpeed(gridWindPeriods, hourlyPeriods, selectedDate) {
   const gridMax = gridWindPeriods.reduce((max, period) => {
     return Number.isFinite(period.windSpeedMph) ? Math.max(max, period.windSpeedMph) : max;
@@ -643,6 +680,116 @@ function getStrongestDaytimeWindSpeed(gridWindPeriods, hourlyPeriods, selectedDa
   if (Number.isFinite(gridMax) && gridMax > -Infinity) return gridMax;
 
   return getStrongestDaytimeWind(hourlyPeriods, selectedDate)?.speed ?? null;
+}
+
+function getWindChartPeriods(gridWindPeriods, gridDirectionPeriods, hourlyPeriods, selectedDate) {
+  const map = new Map();
+
+  gridWindPeriods.forEach(period => {
+    const key = period.startTime;
+    map.set(key, {
+      startTime: period.startTime,
+      speed: period.windSpeedMph,
+      directionDeg: map.get(key)?.directionDeg ?? null
+    });
+  });
+
+  gridDirectionPeriods.forEach(period => {
+    const key = period.startTime;
+    const existing = map.get(key) || { startTime: period.startTime, speed: null, directionDeg: null };
+    existing.directionDeg = period.directionDeg;
+    map.set(key, existing);
+  });
+
+  if (!map.size) {
+    getForecastPeriodsForDate(hourlyPeriods, selectedDate)
+      .filter(period => isDaytimeForecastHour(period.startTime, selectedDate))
+      .forEach(period => {
+        const speed = parseWindSpeed(period.windSpeed);
+        if (!Number.isFinite(speed)) return;
+        map.set(period.startTime, {
+          startTime: period.startTime,
+          speed,
+          directionDeg: parseWindDirectionValue(period.windDirection)
+        });
+      });
+  }
+
+  return [...map.values()]
+    .filter(period => Number.isFinite(period.speed))
+    .sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
+}
+
+function renderWindChart(periods, beach, selectedDate) {
+  if (!periods.length) {
+    windChartEl.textContent = 'Wind chart unavailable.';
+    return;
+  }
+
+  const width = 640;
+  const height = 220;
+  const isPhone = window.innerWidth <= 600;
+  const fontSmall = isPhone ? 24 : 11;
+  const pad = { top: 36, right: 12, bottom: 34, left: 34 };
+  const maxSpeed = Math.max(...periods.map(period => period.speed));
+  const chartMax = Math.max(10, Math.ceil(maxSpeed / 5) * 5);
+  const innerWidth = width - pad.left - pad.right;
+  const innerHeight = height - pad.top - pad.bottom;
+  const barWidth = innerWidth / periods.length;
+  const labelEvery = periods.length > 8 ? 2 : 1;
+  const maxIndex = periods.findIndex(period => period.speed === maxSpeed);
+  const y = speed => pad.top + innerHeight - (speed / chartMax) * innerHeight;
+
+  const yLabels = [0, Math.round(chartMax / 2), chartMax];
+  const yGrid = yLabels.map(value => `
+    <line x1="${pad.left}" y1="${y(value).toFixed(1)}" x2="${width - pad.right}" y2="${y(value).toFixed(1)}" stroke="#e2e8f0" stroke-width="1" />
+    <text x="${pad.left - 6}" y="${(y(value) + 4).toFixed(1)}" text-anchor="end" font-size="${fontSmall}" fill="#64748b">${value}</text>
+  `).join('');
+
+  const bars = periods.map((period, index) => {
+    const x = pad.left + index * barWidth + barWidth * 0.15;
+    const w = barWidth * 0.7;
+    const top = y(period.speed);
+    const barHeight = innerHeight - (top - pad.top);
+    const fill = index === maxIndex ? '#0f766e' : '#60a5fa';
+    const arrow = Number.isFinite(period.directionDeg)
+      ? renderWindArrow(x + w / 2, top - 14, period.directionDeg)
+      : '';
+    const label = index % labelEvery === 0
+      ? `<text x="${(x + w / 2).toFixed(1)}" y="${height - 10}" text-anchor="middle" font-size="${fontSmall}" fill="#64748b">${formatCompactHour(period.startTime)}</text>`
+      : '';
+    const description = `${formatTimeNoSeconds(period.startTime)}, ${period.speed} mph${Number.isFinite(period.directionDeg) ? `, ${Math.round(period.directionDeg)} degrees` : ''}`;
+
+    return `
+      <g>
+        <title>${description}</title>
+        <rect x="${x.toFixed(1)}" y="${top.toFixed(1)}" width="${w.toFixed(1)}" height="${barHeight.toFixed(1)}" rx="4" fill="${fill}" />
+        ${arrow}
+        ${label}
+      </g>
+    `;
+  }).join('');
+
+  windChartEl.innerHTML = `
+    <svg viewBox="0 0 ${width} ${height}" style="width:100%;height:auto;display:block;" role="img" aria-label="Daytime wind for ${beach.displayName} on ${formatLongDate(selectedDate)}">
+      ${yGrid}
+      ${bars}
+    </svg>
+  `;
+}
+
+function renderWindArrow(cx, cy, directionDeg) {
+  const shaftTop = cy - 10;
+  const shaftBottom = cy + 8;
+  const leftX = cx - 5;
+  const rightX = cx + 5;
+
+  return `
+    <g transform="rotate(${directionDeg.toFixed(1)} ${cx.toFixed(1)} ${cy.toFixed(1)})">
+      <line x1="${cx.toFixed(1)}" y1="${shaftBottom.toFixed(1)}" x2="${cx.toFixed(1)}" y2="${shaftTop.toFixed(1)}" stroke="#0f172a" stroke-width="2.5" stroke-linecap="round" />
+      <path d="M ${leftX.toFixed(1)} ${(shaftTop + 5).toFixed(1)} L ${cx.toFixed(1)} ${shaftTop.toFixed(1)} L ${rightX.toFixed(1)} ${(shaftTop + 5).toFixed(1)}" fill="none" stroke="#0f172a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+    </g>
+  `;
 }
 
 function getClothingRecommendation(selectedDate, range, strongestWindSpeed) {
@@ -775,9 +922,15 @@ async function loadWeather(beach, selectedDate) {
   latestHourlyPeriods = forecastData.properties.periods || [];
   const rangePeriods = getGridTemperaturePeriods(gridData?.properties?.temperature?.values, selectedDate);
   const gridWindPeriods = getGridWindPeriods(gridData?.properties?.windSpeed?.values, selectedDate);
+  const gridDirectionPeriods = getGridWindDirectionPeriods(gridData?.properties?.windDirection?.values, selectedDate);
   const strongestWindSpeed = getStrongestDaytimeWindSpeed(gridWindPeriods, latestHourlyPeriods, selectedDate);
   latestRangePeriods = rangePeriods;
   latestStrongestDaytimeWindSpeed = strongestWindSpeed;
+  renderWindChart(
+    getWindChartPeriods(gridWindPeriods, gridDirectionPeriods, latestHourlyPeriods, selectedDate),
+    beach,
+    selectedDate
+  );
   const summary = getSummaryPeriod(latestHourlyPeriods, selectedDate);
   if (!summary) {
     weatherCardTitleEl.textContent = isSameLocalDay(selectedDate, new Date()) ? 'Now' : 'Daytime';
@@ -1355,6 +1508,10 @@ function formatLocalTime(value) {
 
 function formatTimeNoSeconds(value) {
   return new Date(value).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
+function formatCompactHour(value) {
+  return new Date(value).toLocaleTimeString([], { hour: 'numeric' }).toLowerCase().replace(' ', '');
 }
 
 function formatShortDate(value) {
