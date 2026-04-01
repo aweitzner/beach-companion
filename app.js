@@ -1,4 +1,4 @@
-const APP_VERSION = 'v1.4.12';
+const APP_VERSION = 'v1.4.13';
 const BEACHES = [
   {
     id: 'sandy_hook',
@@ -74,6 +74,8 @@ let activeDateKey = getLocalDateKey(new Date());
 let selectedDayKey = activeDateKey;
 
 // --- Helpers ---
+// These are small utilities the rest of the app leans on for wind logic,
+// date matching, and lightweight data normalization.
 function dirToDeg(dir) {
   const map = {
     N: 0, NE: 45, E: 90, SE: 135,
@@ -112,6 +114,8 @@ function findWindShift(hours) {
 let latestHourlyPeriods = [];
 let latestAlerts = [];
 
+// Beach Notes are intentionally short and prioritized. Each note builder
+// returns either null or an object with `{ text, priority }`.
 function windShiftNote(hours) {
   const shift = findWindShift(hours);
   if (!shift) return null;
@@ -265,6 +269,8 @@ function buildBeachNotes(data) {
   return notes;
 }
 
+// The day selector always represents a rolling 7-day planning window.
+// "Today" stays anchored unless the saved selection falls out of range.
 function getSelectableDates(baseDate = new Date()) {
   const start = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate());
   return Array.from({ length: 7 }, (_, index) => {
@@ -312,6 +318,8 @@ function setSelectedDay(dateKey, { persist = true, reload = true } = {}) {
 }
 
 function init() {
+  // Initial page setup: wire the selector UI, restore saved state,
+  // then load the selected beach/day combination.
   addVersionTag();
   ensureTideChartContainer();
   startDateRolloverWatcher();
@@ -436,6 +444,8 @@ function getSelectedBeach() {
 }
 
 async function loadBeach() {
+  // This is the app's main orchestration step. Everything on screen should
+  // reflect one coherent combination of selected beach + selected day.
   const beach = getSelectedBeach();
   const selectedDate = getSelectedDate();
   statusEl.textContent = `Loading ${beach.displayName}…`;
@@ -499,6 +509,9 @@ function getForecastPeriodsForDate(periods, selectedDate) {
   return periods.filter(period => isSameLocalDay(period.startTime, selectedDate));
 }
 
+// Notes should reflect relevant planning hours:
+// - Today: only remaining hours
+// - Future days: only the 6 AM to 6 PM daytime window
 function getNotePeriodsForDate(periods, selectedDate) {
   const dayPeriods = getForecastPeriodsForDate(periods, selectedDate);
   if (!dayPeriods.length) return [];
@@ -511,6 +524,8 @@ function getNotePeriodsForDate(periods, selectedDate) {
 }
 
 function getSummaryPeriod(periods, selectedDate) {
+  // "Now" is only meaningful for Today. Future days use a representative
+  // daytime forecast nearest noon so the summary feels stable and intuitive.
   const dayPeriods = getForecastPeriodsForDate(periods, selectedDate);
   if (!dayPeriods.length) return null;
 
@@ -549,6 +564,8 @@ function getStrongestDaytimeWind(periods, selectedDate) {
 }
 
 function getGridTemperaturePeriods(values, selectedDate) {
+  // NWS hourly forecasts may not include earlier hours by late afternoon.
+  // Grid data lets us rebuild the full daytime range for the selected day.
   if (!Array.isArray(values)) return [];
 
   return values.flatMap(entry => {
@@ -605,6 +622,8 @@ function convertCelsiusToFahrenheit(value) {
 }
 
 function getGridWindPeriods(values, selectedDate) {
+  // The wind chart and clothing note both benefit from a full-day daytime
+  // window, so we expand grid intervals into hourly points when possible.
   if (!Array.isArray(values)) return [];
 
   return values.flatMap(entry => {
@@ -683,6 +702,8 @@ function getStrongestDaytimeWindSpeed(gridWindPeriods, hourlyPeriods, selectedDa
 }
 
 function getWindChartPeriods(gridWindPeriods, gridDirectionPeriods, hourlyPeriods, selectedDate) {
+  // Prefer grid data for complete daytime coverage, but fall back to the
+  // hourly forecast feed so the chart still renders when grid fields are thin.
   const map = new Map();
 
   gridWindPeriods.forEach(period => {
@@ -726,6 +747,8 @@ function renderWindChart(periods, beach, selectedDate) {
     return;
   }
 
+  // The chart is intentionally simple: one daytime bar per hour, a direction
+  // arrow above each bar, and a highlight for the first strongest-wind hour.
   const width = 640;
   const height = 220;
   const isPhone = window.innerWidth <= 600;
@@ -794,6 +817,9 @@ function renderWindArrow(cx, cy, directionDeg) {
 }
 
 function getClothingRecommendation(selectedDate, range, strongestWindSpeed) {
+  // Clothing is treated as an action-oriented Beach Note, not a core condition.
+  // The rules are deterministic and conservative: start from daytime high,
+  // then get colder if the low or strongest daytime wind suggest it.
   if (!range) return null;
 
   const high = range.high.temperature;
@@ -1110,6 +1136,8 @@ function fullMoonRiseNote(astronomy) {
 }
 
 function calculateAstronomy(beach, date = new Date()) {
+  // Sun/moon times are calculated locally from beach coordinates so this
+  // feature does not depend on another external API at runtime.
   const observer = new Astronomy.Observer(beach.lat, beach.lon, 0);
   const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
   const nextDay = new Date(dayStart);
@@ -1185,6 +1213,7 @@ function findDailyTemperatureRange(periods, selectedDate) {
 }
 
 function getRangeCandidates(periods, selectedDate) {
+  // Daytime range is always defined as 6 AM to 6 PM for the selected date.
   const dayPeriods = getForecastPeriodsForDate(periods, selectedDate).filter(period =>
     Number.isFinite(period?.temperature) && !Number.isNaN(new Date(period.startTime).getTime())
   );
@@ -1263,6 +1292,8 @@ function getMoonPhase(date = new Date()) {
 }
 
 async function loadTides(beach, selectedDate) {
+  // Tides use the selected calendar day, not the daytime window.
+  // This keeps the tide list, graph, and first/next tide internally consistent.
   const beginDate = formatYmd(selectedDate);
   const endDate = formatYmd(selectedDate);
 
@@ -1422,6 +1453,8 @@ function renderTideChart(points, beach, selectedDate) {
     return;
   }
 
+  // The tide chart is tuned for mobile readability first, with larger labels
+  // on smaller screens so it stays legible in the field.
 const width = 640;
 const height = 220;
 const pad = { top: 16, right: 14, bottom: 34, left: 40 };
