@@ -1,4 +1,4 @@
-const APP_VERSION = 'v1.4.11';
+const APP_VERSION = 'v1.4.12';
 const BEACHES = [
   {
     id: 'sandy_hook',
@@ -779,13 +779,14 @@ function renderWindChart(periods, beach, selectedDate) {
 }
 
 function renderWindArrow(cx, cy, directionDeg) {
+  const flowDeg = (directionDeg + 180) % 360;
   const shaftTop = cy - 10;
   const shaftBottom = cy + 8;
   const leftX = cx - 5;
   const rightX = cx + 5;
 
   return `
-    <g transform="rotate(${directionDeg.toFixed(1)} ${cx.toFixed(1)} ${cy.toFixed(1)})">
+    <g transform="rotate(${flowDeg.toFixed(1)} ${cx.toFixed(1)} ${cy.toFixed(1)})">
       <line x1="${cx.toFixed(1)}" y1="${shaftBottom.toFixed(1)}" x2="${cx.toFixed(1)}" y2="${shaftTop.toFixed(1)}" stroke="#0f172a" stroke-width="2.5" stroke-linecap="round" />
       <path d="M ${leftX.toFixed(1)} ${(shaftTop + 5).toFixed(1)} L ${cx.toFixed(1)} ${shaftTop.toFixed(1)} L ${rightX.toFixed(1)} ${(shaftTop + 5).toFixed(1)}" fill="none" stroke="#0f172a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
     </g>
