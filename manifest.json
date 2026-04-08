@@ -1,7 +1,7 @@
 {
   "name": "Beach Companion",
   "short_name": "Beach",
-  "start_url": ".",
+  "start_url": "./?v=1.4.14",
   "display": "standalone",
   "background_color": "#3b8eea",
   "theme_color": "#3b8eea",

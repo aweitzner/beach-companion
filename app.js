@@ -1,4 +1,4 @@
-const APP_VERSION = 'v1.4.13';
+const APP_VERSION = 'v1.4.14';
 const BEACHES = [
   {
     id: 'sandy_hook',
