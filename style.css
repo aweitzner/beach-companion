@@ -159,9 +159,16 @@ select, .button {
   min-height: 180px;
 }
 #notesList li {
+  position: relative;
+  list-style: none;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+#notesList li::before {
+  content: "\2022";
+  position: absolute;
+  left: -0.9rem;
 }
 .tide-item {
   display: flex;
