@@ -1,4 +1,4 @@
-const APP_VERSION = 'v1.5.1';
+const APP_VERSION = 'v1.5.2';
 const queryParams = new URLSearchParams(window.location.search);
 const TEST_MODE = queryParams.get('testMode') === '1';
 const TEST_MODE_CONFIG = Object.freeze({
@@ -12,64 +12,32 @@ const TEST_MODE_CONFIG = Object.freeze({
 });
 const SIMULATED_NOW = parseSimulatedNow(TEST_MODE_CONFIG.simNowRaw);
 const testModeErrors = [];
-// Regional shoreline panels are based on NOAA-derived NJ shoreline geometry
-// and framed to match the beach-specific coastal views tested in Mapshaper.
+// Regional wind panels use beach-specific coastal image crops as an interim
+// visual layer until the final clean SVG shoreline assets are ready.
 const WIND_REGION_PANELS = Object.freeze({
   sandy_hook: Object.freeze({
-    viewBox: '0 0 210 320',
-    landPaths: Object.freeze([
-      'M 0 248 L 0 320 L 84 320 L 100 306 L 110 290 L 118 274 L 123 254 L 128 236 L 136 220 L 142 204 L 142 182 L 140 158 L 134 138 L 126 120 L 122 96 L 122 76 L 126 56 L 136 36 L 152 20 L 162 12 L 174 16 L 184 30 L 186 50 L 182 68 L 170 82 L 166 102 L 168 126 L 174 146 L 184 164 L 190 182 L 194 208 L 192 242 L 188 268 L 180 292 L 166 310 L 148 320 L 210 320 L 210 248 Z',
-      'M 124 34 L 100 26 L 90 18 L 94 8 L 108 4 L 126 10 L 140 18 L 148 32 L 138 40 Z'
-    ]),
-    waterPaths: Object.freeze([
-      'M 118 52 L 110 42 L 104 46 L 108 56 Z',
-      'M 132 64 L 126 60 L 124 68 L 132 70 Z',
-      'M 126 218 L 118 210 L 116 222 L 122 232 Z'
-    ]),
-    coastPaths: Object.freeze([
-      'M 100 26 L 90 18 L 94 8 L 108 4 L 126 10 L 140 18 L 148 32 L 136 36 L 126 56 L 122 76 L 122 96 L 126 120 L 134 138 L 140 158 L 142 182 L 142 204 L 136 220 L 128 236 L 123 254 L 118 274 L 110 290 L 100 306 L 84 320',
-      'M 124 34 L 112 36 L 100 40 L 92 46'
-    ]),
-    marker: Object.freeze({ x: 108, y: 72 }),
-    arrowOffset: Object.freeze({ x: 34, y: 10 })
+    imagePath: 'assets/wind-panels/sandy-hook.png',
+    imageWidth: 297,
+    imageHeight: 407,
+    marker: Object.freeze({ x: 79, y: 63 }),
+    arrowOffset: Object.freeze({ x: 18, y: -2 })
   }),
   monmouth: Object.freeze({
-    viewBox: '0 0 210 320',
-    landPaths: Object.freeze([
-      'M 0 0 L 120 0 L 118 20 L 116 42 L 116 72 L 118 104 L 120 136 L 122 168 L 124 202 L 126 236 L 126 270 L 124 304 L 122 320 L 0 320 Z'
-    ]),
-    waterPaths: Object.freeze([
-      'M 78 22 L 92 18 L 108 22 L 112 30 L 106 38 L 84 40 L 74 34 Z',
-      'M 66 92 L 78 86 L 96 92 L 102 102 L 96 110 L 76 112 L 64 104 Z',
-      'M 54 150 L 66 142 L 90 148 L 96 160 L 90 168 L 68 170 L 54 162 Z',
-      'M 42 226 L 58 220 L 84 224 L 92 236 L 88 246 L 64 248 L 46 240 Z'
-    ]),
-    coastPaths: Object.freeze([
-      'M 120 0 L 118 20 L 116 42 L 116 72 L 118 104 L 120 136 L 122 168 L 124 202 L 126 236 L 126 270 L 124 304 L 122 320'
-    ]),
+    imagePath: 'assets/wind-panels/asbury-belmar.png',
+    imageWidth: 343,
+    imageHeight: 598,
     beaches: Object.freeze({
-      asbury_park: Object.freeze({ x: 124, y: 112 }),
-      belmar: Object.freeze({ x: 126, y: 210 })
+      asbury_park: Object.freeze({ x: 76, y: 35 }),
+      belmar: Object.freeze({ x: 79, y: 74 })
     }),
-    arrowOffset: Object.freeze({ x: 34, y: -8 })
+    arrowOffset: Object.freeze({ x: 16, y: -4 })
   }),
   cape_may: Object.freeze({
-    viewBox: '0 0 210 320',
-    landPaths: Object.freeze([
-      'M 0 70 L 32 54 L 64 44 L 98 34 L 126 26 L 156 14 L 180 10 L 184 34 L 174 52 L 160 70 L 146 88 L 130 108 L 116 126 L 96 150 L 82 170 L 70 192 L 58 214 L 42 240 L 24 270 L 8 300 L 0 314 Z',
-      'M 118 126 L 130 134 L 142 148 L 150 166 L 148 180 L 140 194 L 126 206 L 114 214 L 104 204 L 104 190 L 108 172 L 112 152 Z'
-    ]),
-    waterPaths: Object.freeze([
-      'M 118 62 L 138 50 L 160 56 L 168 72 L 158 86 L 136 90 L 118 82 Z',
-      'M 86 118 L 104 110 L 126 118 L 134 132 L 126 146 L 104 148 L 88 138 Z',
-      'M 58 196 L 78 186 L 100 194 L 106 210 L 96 222 L 72 224 L 54 214 Z',
-      'M 20 246 L 34 236 L 54 244 L 58 256 L 50 268 L 30 270 L 18 260 Z'
-    ]),
-    coastPaths: Object.freeze([
-      'M 180 10 L 184 34 L 174 52 L 160 70 L 146 88 L 130 108 L 116 126 L 112 152 L 108 172 L 104 190 L 104 204 L 96 220 L 82 244 L 66 268 L 48 290 L 30 308 L 8 320'
-    ]),
-    marker: Object.freeze({ x: 48, y: 282 }),
-    arrowOffset: Object.freeze({ x: 40, y: -10 })
+    imagePath: 'assets/wind-panels/cape-may.png',
+    imageWidth: 486,
+    imageHeight: 500,
+    marker: Object.freeze({ x: 35, y: 88 }),
+    arrowOffset: Object.freeze({ x: 18, y: -8 })
   })
 });
 const BEACHES = [
@@ -135,6 +103,7 @@ const moonsetTimeEl = document.getElementById('moonsetTime');
 const windChartEl = document.getElementById('windChart');
 const windSummaryEl = ensureWindSummaryEl();
 const windDiagramEl = ensureWindDiagramEl();
+const windVisualsEl = ensureWindVisualsEl();
 const tidesTitleEl = document.getElementById('tidesTitle');
 const nextTideEl = document.getElementById('nextTide');
 const moonPhaseEl = document.getElementById('moonPhase');
@@ -641,6 +610,19 @@ function ensureWindDiagramEl() {
   return diagramEl;
 }
 
+function ensureWindVisualsEl() {
+  let visualsEl = document.getElementById('windVisuals');
+  if (visualsEl) return visualsEl;
+
+  visualsEl = document.createElement('div');
+  visualsEl.id = 'windVisuals';
+  visualsEl.className = 'wind-visuals';
+  windDiagramEl.insertAdjacentElement('beforebegin', visualsEl);
+  visualsEl.appendChild(windDiagramEl);
+  visualsEl.appendChild(windChartEl);
+  return visualsEl;
+}
+
 function getSelectedBeach() {
   return BEACHES.find(b => b.id === beachSelect.value) || BEACHES[0];
 }
@@ -1038,31 +1020,23 @@ function renderWindDiagram(beach, peakPeriod, selectedDate) {
   const diagramLabel = peakPeriod
     ? `Coastal wind diagram for ${beach.displayName} on ${formatLongDate(selectedDate)}. Beach marker shown with peak wind direction near ${formatTimeNoSeconds(peakPeriod.startTime)}.`
     : `Coastal wind diagram for ${beach.displayName} on ${formatLongDate(selectedDate)}. Beach marker shown without a peak wind arrow.`;
-  const landPaths = (panel.landPaths || []).map(path => `<path d="${path}" fill="#f6f6f4" />`).join('');
-  const inlandWaterPaths = (panel.waterPaths || []).map(path => `<path d="${path}" fill="#a8d5ef" opacity="0.85" />`).join('');
-  const coastPaths = (panel.coastPaths || []).map(path => `<path d="${path}" fill="none" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" />`).join('');
-  const coastOutlinePaths = (panel.coastPaths || []).map(path => `<path d="${path}" fill="none" stroke="#7db6da" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />`).join('');
 
   windDiagramEl.innerHTML = `
-    <svg viewBox="${panel.viewBox}" class="wind-diagram-svg" role="img" aria-label="${diagramLabel}">
-      <defs>
-        <linearGradient id="windSea" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stop-color="#cce9f8" />
-          <stop offset="100%" stop-color="#8cc6ea" />
-        </linearGradient>
-        <filter id="markerGlow" x="-80%" y="-80%" width="260%" height="260%">
-          <feDropShadow dx="0" dy="0" stdDeviation="2" flood-color="rgba(15, 118, 110, 0.35)" />
-        </filter>
-      </defs>
-      <rect x="0" y="0" width="100%" height="100%" rx="18" fill="url(#windSea)" />
-      ${landPaths}
-      ${inlandWaterPaths}
-      ${coastPaths}
-      ${coastOutlinePaths}
-      <circle cx="${marker.x}" cy="${marker.y}" r="5.2" fill="#3b82f6" stroke="#ffffff" stroke-width="2.6" filter="url(#markerGlow)" />
-      <circle cx="${marker.x}" cy="${marker.y}" r="9.2" fill="none" stroke="rgba(255, 255, 255, 0.72)" stroke-width="1.8" />
-      ${arrow}
-    </svg>
+    <div class="wind-diagram-map" role="img" aria-label="${diagramLabel}" style="background-image:url('${panel.imagePath}')">
+      <svg viewBox="0 0 100 100" class="wind-diagram-overlay" aria-hidden="true">
+        <defs>
+          <filter id="markerGlow" x="-120%" y="-120%" width="340%" height="340%">
+            <feDropShadow dx="0" dy="0" stdDeviation="1.8" flood-color="rgba(37, 99, 235, 0.45)" />
+          </filter>
+          <filter id="arrowGlow" x="-40%" y="-40%" width="180%" height="180%">
+            <feDropShadow dx="0" dy="6" stdDeviation="4" flood-color="rgba(130, 80, 223, 0.24)" />
+          </filter>
+        </defs>
+        <circle cx="${marker.x}" cy="${marker.y}" r="2.3" fill="#3b82f6" stroke="#ffffff" stroke-width="1.2" filter="url(#markerGlow)" />
+        <circle cx="${marker.x}" cy="${marker.y}" r="4.2" fill="none" stroke="rgba(255,255,255,0.72)" stroke-width="0.9" />
+        ${arrow}
+      </svg>
+    </div>
   `;
 }
 
@@ -1095,15 +1069,16 @@ function getWindDiagramPanelSelection(beach) {
 
 function renderWindDiagramArrow(cx, cy, directionDeg) {
   const flowDeg = (directionDeg + 180) % 360;
-  const shaftTop = cy - 14;
-  const shaftBottom = cy + 14;
-  const leftX = cx - 6;
-  const rightX = cx + 6;
+  const shaftTop = cy - 8;
+  const shaftBottom = cy + 8;
+  const leftX = cx - 3.6;
+  const rightX = cx + 3.6;
 
   return `
-    <g transform="rotate(${flowDeg.toFixed(1)} ${cx.toFixed(1)} ${cy.toFixed(1)})">
-      <line x1="${cx.toFixed(1)}" y1="${shaftBottom.toFixed(1)}" x2="${cx.toFixed(1)}" y2="${shaftTop.toFixed(1)}" stroke="#0f172a" stroke-width="3" stroke-linecap="round" />
-      <path d="M ${leftX.toFixed(1)} ${(shaftTop + 6).toFixed(1)} L ${cx.toFixed(1)} ${shaftTop.toFixed(1)} L ${rightX.toFixed(1)} ${(shaftTop + 6).toFixed(1)}" fill="none" stroke="#0f172a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+    <g filter="url(#arrowGlow)" transform="rotate(${flowDeg.toFixed(1)} ${cx.toFixed(1)} ${cy.toFixed(1)})">
+      <line x1="${cx.toFixed(1)}" y1="${shaftBottom.toFixed(1)}" x2="${cx.toFixed(1)}" y2="${shaftTop.toFixed(1)}" stroke="#8250df" stroke-width="2.4" stroke-linecap="round" />
+      <path d="M ${leftX.toFixed(1)} ${(shaftTop + 4).toFixed(1)} L ${cx.toFixed(1)} ${shaftTop.toFixed(1)} L ${rightX.toFixed(1)} ${(shaftTop + 4).toFixed(1)}" fill="none" stroke="#ffffff" stroke-width="5.8" stroke-linecap="round" stroke-linejoin="round" opacity="0.9" />
+      <path d="M ${leftX.toFixed(1)} ${(shaftTop + 4).toFixed(1)} L ${cx.toFixed(1)} ${shaftTop.toFixed(1)} L ${rightX.toFixed(1)} ${(shaftTop + 4).toFixed(1)}" fill="none" stroke="#8250df" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />
     </g>
   `;
 }
