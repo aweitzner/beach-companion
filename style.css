@@ -274,6 +274,10 @@ select, .button {
     aspect-ratio: 1 / 1.2;
   }
 
+  .wind-chart {
+    min-height: 0;
+  }
+
   .day-button strong {
     font-size: 0.95rem;
   }
