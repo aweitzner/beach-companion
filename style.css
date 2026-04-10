@@ -260,14 +260,18 @@ select, .button {
   .wind-visuals {
     grid-template-columns: minmax(84px, 0.42fr) minmax(0, 1.58fr);
     gap: 10px;
+    align-items: start;
   }
 
   .wind-diagram {
     padding: 6px;
+    align-self: start;
   }
 
   .wind-diagram-map {
-    min-height: 96px;
+    height: auto;
+    min-height: 0;
+    aspect-ratio: 1 / 1.2;
   }
 
   .day-button strong {
