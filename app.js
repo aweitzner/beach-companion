@@ -1,4 +1,4 @@
-const APP_VERSION = 'v1.4.14';
+const APP_VERSION = 'v1.4.15';
 const queryParams = new URLSearchParams(window.location.search);
 const TEST_MODE = queryParams.get('testMode') === '1';
 const TEST_MODE_CONFIG = Object.freeze({
