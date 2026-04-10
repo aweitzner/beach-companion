@@ -1,4 +1,4 @@
-const APP_VERSION = 'v1.4.16';
+const APP_VERSION = 'v1.4.17';
 const queryParams = new URLSearchParams(window.location.search);
 const TEST_MODE = queryParams.get('testMode') === '1';
 const TEST_MODE_CONFIG = Object.freeze({
@@ -910,7 +910,7 @@ function renderWindChart(periods, beach, selectedDate) {
     const w = barWidth * 0.7;
     const top = y(period.speed);
     const barHeight = innerHeight - (top - pad.top);
-    const fill = index === maxIndex ? '#0f766e' : '#60a5fa';
+    const fill = index === maxIndex ? '#8250df' : '#60a5fa';
     const arrow = Number.isFinite(period.directionDeg)
       ? renderWindArrow(x + w / 2, top - 14, period.directionDeg)
       : '';
@@ -918,7 +918,7 @@ function renderWindChart(periods, beach, selectedDate) {
       ? `<text x="${(x + w / 2).toFixed(1)}" y="${height - 10}" text-anchor="middle" font-size="${fontSmall}" fill="#64748b">${formatCompactHour(period.startTime)}</text>`
       : '';
     const peakLabel = index === maxIndex
-      ? `<text x="${(x + w / 2).toFixed(1)}" y="${Math.max(12, top - 22).toFixed(1)}" text-anchor="middle" font-size="${fontMedium}" font-weight="600" fill="#0f766e">Peak</text>`
+      ? `<text x="${(x + w / 2).toFixed(1)}" y="${Math.min(height - 14, top + Math.max(16, Math.min(barHeight - 8, 26))).toFixed(1)}" text-anchor="middle" dominant-baseline="middle" font-size="${fontMedium}" font-weight="700" fill="#ffffff">Peak</text>`
       : '';
     const description = `${formatTimeNoSeconds(period.startTime)}, ${period.speed} mph${Number.isFinite(period.directionDeg) ? `, ${Math.round(period.directionDeg)} degrees` : ''}`;
 
