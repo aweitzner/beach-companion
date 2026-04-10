@@ -110,7 +110,7 @@ function getFixtureParam(source) {
 }
 
 function getFixtureUrl(source, fixtureName) {
-  return `/fixtures/${source}/${fixtureName}.json`;
+  return `fixtures/${source}/${fixtureName}.json`;
 }
 
 async function loadFixtureJson(source, fixtureName) {
