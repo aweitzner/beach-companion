@@ -257,6 +257,19 @@ select, .button {
     min-height: 180px;
   }
 
+  .wind-visuals {
+    grid-template-columns: minmax(84px, 0.42fr) minmax(0, 1.58fr);
+    gap: 10px;
+  }
+
+  .wind-diagram {
+    padding: 6px;
+  }
+
+  .wind-diagram-map {
+    min-height: 96px;
+  }
+
   .day-button strong {
     font-size: 0.95rem;
   }
