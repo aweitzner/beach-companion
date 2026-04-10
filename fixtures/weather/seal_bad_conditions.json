@@ -1,0 +1,16 @@
+{
+  "properties": {
+    "periods": [
+      {
+        "startTime": "2026-01-15T10:00:00-05:00",
+        "temperature": 38,
+        "temperatureUnit": "F",
+        "windSpeed": "18 mph",
+        "windDirection": "NW",
+        "dewpoint": { "value": -2, "unitCode": "wmoUnit:degC" },
+        "probabilityOfPrecipitation": { "value": 0 },
+        "shortForecast": "Mostly Sunny"
+      }
+    ]
+  }
+}

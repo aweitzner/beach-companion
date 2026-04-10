@@ -1,0 +1,26 @@
+{
+  "properties": {
+    "periods": [
+      {
+        "startTime": "2026-06-20T10:00:00-04:00",
+        "temperature": 72,
+        "temperatureUnit": "F",
+        "windSpeed": "8 mph",
+        "windDirection": "W",
+        "dewpoint": { "value": 16, "unitCode": "wmoUnit:degC" },
+        "probabilityOfPrecipitation": { "value": 0 },
+        "shortForecast": "Sunny"
+      },
+      {
+        "startTime": "2026-06-20T15:00:00-04:00",
+        "temperature": 78,
+        "temperatureUnit": "F",
+        "windSpeed": "10 mph",
+        "windDirection": "SE",
+        "dewpoint": { "value": 18, "unitCode": "wmoUnit:degC" },
+        "probabilityOfPrecipitation": { "value": 0 },
+        "shortForecast": "Sunny"
+      }
+    ]
+  }
+}

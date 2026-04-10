@@ -1,0 +1,16 @@
+{
+  "properties": {
+    "periods": [
+      {
+        "startTime": "2026-06-20T13:00:00-04:00",
+        "temperature": 79,
+        "temperatureUnit": "F",
+        "windSpeed": "9 mph",
+        "windDirection": "S",
+        "dewpoint": { "value": 21, "unitCode": "wmoUnit:degC" },
+        "probabilityOfPrecipitation": { "value": null },
+        "shortForecast": "Chance Rain Showers"
+      }
+    ]
+  }
+}

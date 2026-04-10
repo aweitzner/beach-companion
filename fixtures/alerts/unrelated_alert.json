@@ -1,0 +1,10 @@
+{
+  "features": [
+    {
+      "properties": {
+        "event": "Small Craft Advisory",
+        "description": "Conditions will be hazardous to small craft."
+      }
+    }
+  ]
+}

@@ -1,4 +1,17 @@
 const APP_VERSION = 'v1.4.14';
+const queryParams = new URLSearchParams(window.location.search);
+const TEST_MODE = queryParams.get('testMode') === '1';
+const TEST_MODE_CONFIG = Object.freeze({
+  enabled: TEST_MODE,
+  simNowRaw: queryParams.get('simNow'),
+  weatherFixture: queryParams.get('weatherFixture'),
+  alertsFixture: queryParams.get('alertsFixture'),
+  tidesFixture: queryParams.get('tidesFixture'),
+  waterTempFixture: queryParams.get('waterTempFixture'),
+  astronomyFixture: queryParams.get('astronomyFixture')
+});
+const SIMULATED_NOW = parseSimulatedNow(TEST_MODE_CONFIG.simNowRaw);
+const testModeErrors = [];
 const BEACHES = [
   {
     id: 'sandy_hook',
@@ -70,12 +83,115 @@ const LAST_DAY_KEY = 'beach-app-selected-day';
 let latestAstronomy = null;
 let latestRangePeriods = [];
 let latestStrongestDaytimeWindSpeed = null;
-let activeDateKey = getLocalDateKey(new Date());
+let activeDateKey = getLocalDateKey(getAppNow());
 let selectedDayKey = activeDateKey;
 
 // --- Helpers ---
 // These are small utilities the rest of the app leans on for wind logic,
 // date matching, and lightweight data normalization.
+function parseSimulatedNow(value) {
+  if (!TEST_MODE || !value) return null;
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    console.error('Invalid simNow value:', value);
+    return null;
+  }
+
+  return parsed;
+}
+
+function getAppNow() {
+  return SIMULATED_NOW ? new Date(SIMULATED_NOW.getTime()) : new Date();
+}
+
+function getFixtureParam(source) {
+  return TEST_MODE_CONFIG[`${source}Fixture`] || null;
+}
+
+function getFixtureUrl(source, fixtureName) {
+  return `/fixtures/${source}/${fixtureName}.json`;
+}
+
+async function loadFixtureJson(source, fixtureName) {
+  const response = await fetch(getFixtureUrl(source, fixtureName), {
+    headers: { Accept: 'application/json' }
+  });
+
+  if (!response.ok) {
+    throw new Error(`Fixture load failed for ${source}: ${fixtureName}`);
+  }
+
+  return response.json();
+}
+
+function getTestModeBannerParts() {
+  if (!TEST_MODE) return [];
+
+  const parts = ['Test Mode'];
+
+  if (SIMULATED_NOW) {
+    parts.push(`Sim Now: ${formatDateTime(SIMULATED_NOW)}`);
+  } else if (TEST_MODE_CONFIG.simNowRaw) {
+    parts.push(`Sim Now: invalid (${TEST_MODE_CONFIG.simNowRaw})`);
+  }
+
+  [
+    ['weather', 'Weather'],
+    ['alerts', 'Alerts'],
+    ['tides', 'Tides'],
+    ['waterTemp', 'Water Temp'],
+    ['astronomy', 'Astronomy']
+  ].forEach(([key, label]) => {
+    const fixtureName = getFixtureParam(key);
+    if (fixtureName) {
+      parts.push(`${label}: ${fixtureName}`);
+    }
+  });
+
+  testModeErrors.forEach(message => {
+    parts.push(message);
+  });
+
+  return parts;
+}
+
+function renderTestModeBanner() {
+  const existing = document.getElementById('testModeBanner');
+  if (existing) existing.remove();
+  if (!TEST_MODE) return;
+
+  const banner = document.createElement('div');
+  banner.id = 'testModeBanner';
+  banner.textContent = getTestModeBannerParts().join(' · ');
+  banner.style.position = 'sticky';
+  banner.style.top = '0';
+  banner.style.zIndex = '1000';
+  banner.style.padding = '6px 12px';
+  banner.style.fontSize = '0.82rem';
+  banner.style.fontWeight = '600';
+  banner.style.textAlign = 'center';
+  banner.style.color = '#92400e';
+  banner.style.background = 'rgba(254, 243, 199, 0.95)';
+  banner.style.borderBottom = '1px solid rgba(217, 119, 6, 0.18)';
+  banner.style.backdropFilter = 'blur(6px)';
+  document.body.prepend(banner);
+}
+
+function clearTestModeErrors() {
+  if (!TEST_MODE) return;
+  testModeErrors.length = 0;
+  renderTestModeBanner();
+}
+
+function addTestModeError(message) {
+  if (!TEST_MODE || !message) return;
+  if (!testModeErrors.includes(message)) {
+    testModeErrors.push(message);
+  }
+  renderTestModeBanner();
+}
+
 function dirToDeg(dir) {
   const map = {
     N: 0, NE: 45, E: 90, SE: 135,
@@ -139,7 +255,7 @@ const dirText = degToCardinal(newDeg);
 phrase = `Wind shifting ${dirText}`;
   }
 
-  const now = new Date();
+  const now = getAppNow();
   const shiftTime = new Date(shift.startTime);
   const diff = shiftTime - now;
 
@@ -184,7 +300,7 @@ function precipitationNote(hours) {
   if (!hours || hours.length === 0) return null;
 
   const threshold = 30;
-  const now = new Date();
+  const now = getAppNow();
 
   let best = null;
 
@@ -271,7 +387,7 @@ function buildBeachNotes(data) {
 
 // The day selector always represents a rolling 7-day planning window.
 // "Today" stays anchored unless the saved selection falls out of range.
-function getSelectableDates(baseDate = new Date()) {
+function getSelectableDates(baseDate = getAppNow()) {
   const start = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate());
   return Array.from({ length: 7 }, (_, index) => {
     const date = new Date(start);
@@ -283,7 +399,7 @@ function getSelectableDates(baseDate = new Date()) {
 function restoreSelectedDay() {
   const validKeys = new Set(getSelectableDates().map(getLocalDateKey));
   const saved = localStorage.getItem(LAST_DAY_KEY);
-  selectedDayKey = validKeys.has(saved) ? saved : getLocalDateKey(new Date());
+  selectedDayKey = validKeys.has(saved) ? saved : getLocalDateKey(getAppNow());
 }
 
 function getSelectedDate() {
@@ -291,7 +407,7 @@ function getSelectedDate() {
 }
 
 function isTodaySelected() {
-  return selectedDayKey === getLocalDateKey(new Date());
+  return selectedDayKey === getLocalDateKey(getAppNow());
 }
 
 function renderDaySelector() {
@@ -311,7 +427,7 @@ function renderDaySelector() {
 
 function setSelectedDay(dateKey, { persist = true, reload = true } = {}) {
   const validKeys = new Set(getSelectableDates().map(getLocalDateKey));
-  selectedDayKey = validKeys.has(dateKey) ? dateKey : getLocalDateKey(new Date());
+  selectedDayKey = validKeys.has(dateKey) ? dateKey : getLocalDateKey(getAppNow());
   renderDaySelector();
   if (persist) localStorage.setItem(LAST_DAY_KEY, selectedDayKey);
   if (reload) loadBeach();
@@ -321,6 +437,7 @@ function init() {
   // Initial page setup: wire the selector UI, restore saved state,
   // then load the selected beach/day combination.
   addVersionTag();
+  renderTestModeBanner();
   ensureTideChartContainer();
   startDateRolloverWatcher();
 
@@ -446,10 +563,11 @@ function getSelectedBeach() {
 async function loadBeach() {
   // This is the app's main orchestration step. Everything on screen should
   // reflect one coherent combination of selected beach + selected day.
+  clearTestModeErrors();
   const beach = getSelectedBeach();
   const selectedDate = getSelectedDate();
   statusEl.textContent = `Loading ${beach.displayName}…`;
-  tidesTitleEl.textContent = isSameLocalDay(selectedDate, new Date())
+  tidesTitleEl.textContent = isSameLocalDay(selectedDate, getAppNow())
     ? 'Tides Today'
     : `Tides ${formatShortDate(selectedDate)}`;
   latestAstronomy = calculateAstronomy(beach, selectedDate);
@@ -471,13 +589,13 @@ async function loadBeach() {
     alerts: latestAlerts,
     astronomy: latestAstronomy,
     date: selectedDate,
-    isToday: isSameLocalDay(selectedDate, new Date()),
+    isToday: isSameLocalDay(selectedDate, getAppNow()),
     range: findDailyTemperatureRange(rangePeriods, selectedDate),
     strongestWindSpeed: latestStrongestDaytimeWindSpeed
   });
   renderNotes(notes);
 
-  moonPhaseEl.textContent = `Moon: ${getMoonPhase(latestAstronomy?.date || new Date())}`;
+  moonPhaseEl.textContent = `Moon: ${getMoonPhase(latestAstronomy?.date || getAppNow())}`;
 
   const failed = results.filter(result => result.status === 'rejected');
   if (failed.length) {
@@ -491,7 +609,7 @@ async function loadBeach() {
 
 function startDateRolloverWatcher() {
   window.setInterval(() => {
-    const nextDateKey = getLocalDateKey(new Date());
+    const nextDateKey = getLocalDateKey(getAppNow());
     if (nextDateKey === activeDateKey) return;
     activeDateKey = nextDateKey;
     const validKeys = new Set(getSelectableDates().map(getLocalDateKey));
@@ -515,11 +633,11 @@ function getForecastPeriodsForDate(periods, selectedDate) {
 function getNotePeriodsForDate(periods, selectedDate) {
   const dayPeriods = getForecastPeriodsForDate(periods, selectedDate);
   if (!dayPeriods.length) return [];
-  if (!isSameLocalDay(selectedDate, new Date())) {
+  if (!isSameLocalDay(selectedDate, getAppNow())) {
     return dayPeriods.filter(period => isDaytimeForecastHour(period.startTime, selectedDate));
   }
 
-  const now = new Date();
+  const now = getAppNow();
   return dayPeriods.filter(period => new Date(period.startTime) >= now);
 }
 
@@ -529,7 +647,7 @@ function getSummaryPeriod(periods, selectedDate) {
   const dayPeriods = getForecastPeriodsForDate(periods, selectedDate);
   if (!dayPeriods.length) return null;
 
-  if (isSameLocalDay(selectedDate, new Date())) {
+  if (isSameLocalDay(selectedDate, getAppNow())) {
     return periods?.[0] || dayPeriods[0];
   }
 
@@ -927,25 +1045,7 @@ function renderFutureDaySummary(rangePeriods, windPeriods, selectedDate, tempera
 }
 
 async function loadWeather(beach, selectedDate) {
-  const pointsRes = await fetch(`https://api.weather.gov/points/${beach.lat},${beach.lon}`, {
-    headers: { Accept: 'application/geo+json' }
-  });
-  if (!pointsRes.ok) throw new Error('Weather points failed');
-  const pointsData = await pointsRes.json();
-
-  const [forecastRes, gridRes] = await Promise.all([
-    fetch(pointsData.properties.forecastHourly, {
-      headers: { Accept: 'application/geo+json' }
-    }),
-    fetch(pointsData.properties.forecastGridData, {
-      headers: { Accept: 'application/geo+json' }
-    })
-  ]);
-  if (!forecastRes.ok) throw new Error('Hourly forecast failed');
-  const [forecastData, gridData] = await Promise.all([
-    forecastRes.json(),
-    gridRes.ok ? gridRes.json() : Promise.resolve(null)
-  ]);
+  const { forecastData, gridData } = await fetchWeatherData(beach);
   latestHourlyPeriods = forecastData.properties.periods || [];
   const rangePeriods = getGridTemperaturePeriods(gridData?.properties?.temperature?.values, selectedDate);
   const gridWindPeriods = getGridWindPeriods(gridData?.properties?.windSpeed?.values, selectedDate);
@@ -960,9 +1060,9 @@ async function loadWeather(beach, selectedDate) {
   );
   const summary = getSummaryPeriod(latestHourlyPeriods, selectedDate);
   if (!summary) {
-    weatherCardTitleEl.textContent = isSameLocalDay(selectedDate, new Date()) ? 'Now' : 'Daytime';
-    airLabelEl.textContent = isSameLocalDay(selectedDate, new Date()) ? 'Air' : 'High';
-    windLabelEl.textContent = isSameLocalDay(selectedDate, new Date()) ? 'Wind' : 'Low';
+    weatherCardTitleEl.textContent = isSameLocalDay(selectedDate, getAppNow()) ? 'Now' : 'Daytime';
+    airLabelEl.textContent = isSameLocalDay(selectedDate, getAppNow()) ? 'Air' : 'High';
+    windLabelEl.textContent = isSameLocalDay(selectedDate, getAppNow()) ? 'Wind' : 'Low';
     airTempEl.textContent = '--';
     windEl.textContent = '--';
     weatherFeelsEl.textContent = '';
@@ -971,7 +1071,7 @@ async function loadWeather(beach, selectedDate) {
     return;
   }
 
-  if (!isSameLocalDay(selectedDate, new Date())) {
+  if (!isSameLocalDay(selectedDate, getAppNow())) {
     renderFutureDaySummary(
       rangePeriods.length ? rangePeriods : latestHourlyPeriods,
       latestHourlyPeriods,
@@ -993,6 +1093,64 @@ async function loadWeather(beach, selectedDate) {
     selectedDate,
     summary.temperatureUnit
   );
+}
+
+function normalizeWeatherFixturePayload(payload) {
+  if (!payload || typeof payload !== 'object') {
+    throw new Error('Weather fixture payload is invalid');
+  }
+
+  if (Array.isArray(payload?.properties?.periods)) {
+    return {
+      forecastData: payload,
+      gridData: null
+    };
+  }
+
+  const forecastData = payload.forecastHourly || payload.forecastData || payload.forecast || null;
+  const gridData = payload.gridData || payload.forecastGridData || payload.grid || null;
+
+  if (!Array.isArray(forecastData?.properties?.periods)) {
+    throw new Error('Weather fixture is missing forecast periods');
+  }
+
+  return { forecastData, gridData };
+}
+
+async function fetchWeatherData(beach) {
+  const fixtureName = getFixtureParam('weather');
+  if (TEST_MODE && fixtureName) {
+    try {
+      return normalizeWeatherFixturePayload(await loadFixtureJson('weather', fixtureName));
+    } catch (error) {
+      console.error('Weather fixture load failed', error);
+      addTestModeError(`Weather fixture failed: ${fixtureName}`);
+      throw error;
+    }
+  }
+
+  const pointsRes = await fetch(`https://api.weather.gov/points/${beach.lat},${beach.lon}`, {
+    headers: { Accept: 'application/geo+json' }
+  });
+  if (!pointsRes.ok) throw new Error('Weather points failed');
+  const pointsData = await pointsRes.json();
+
+  const [forecastRes, gridRes] = await Promise.all([
+    fetch(pointsData.properties.forecastHourly, {
+      headers: { Accept: 'application/geo+json' }
+    }),
+    fetch(pointsData.properties.forecastGridData, {
+      headers: { Accept: 'application/geo+json' }
+    })
+  ]);
+  if (!forecastRes.ok) throw new Error('Hourly forecast failed');
+
+  const [forecastData, gridData] = await Promise.all([
+    forecastRes.json(),
+    gridRes.ok ? gridRes.json() : Promise.resolve(null)
+  ]);
+
+  return { forecastData, gridData };
 }
 
 function renderWeatherFeels(period) {
@@ -1100,7 +1258,7 @@ function getDewPointDescriptor(dewPoint) {
   return 'oppressive';
 }
 
-function sealNote(beach, currentPeriod, precipitation, date = new Date()) {
+function sealNote(beach, currentPeriod, precipitation, date = getAppNow()) {
   if (beach?.id !== 'sandy_hook') return null;
   if (!isSealSeason(date)) return null;
 
@@ -1135,7 +1293,7 @@ function fullMoonRiseNote(astronomy) {
   };
 }
 
-function calculateAstronomy(beach, date = new Date()) {
+function calculateAstronomy(beach, date = getAppNow()) {
   // Sun/moon times are calculated locally from beach coordinates so this
   // feature does not depend on another external API at runtime.
   const observer = new Astronomy.Observer(beach.lat, beach.lon, 0);
@@ -1176,7 +1334,7 @@ function formatEventTime(value) {
   return value instanceof Date ? formatTimeNoSeconds(value) : '—';
 }
 
-function isSealSeason(date = new Date()) {
+function isSealSeason(date = getAppNow()) {
   const month = date.getMonth();
   const day = date.getDate();
 
@@ -1243,20 +1401,31 @@ function formatHourLabel(value) {
 }
 
 async function loadAlerts(beach) {
-  try {
-    const url = `https://api.weather.gov/alerts/active?point=${beach.lat},${beach.lon}`;
-    const res = await fetch(url);
-    const data = await res.json();
+  const fixtureName = getFixtureParam('alerts');
 
-    latestAlerts = data.features || [];
+  try {
+    const data = TEST_MODE && fixtureName
+      ? await loadFixtureJson('alerts', fixtureName)
+      : await fetch(`https://api.weather.gov/alerts/active?point=${beach.lat},${beach.lon}`).then(async res => {
+        if (!res.ok) throw new Error('Alerts fetch failed');
+        return res.json();
+      });
+
+    latestAlerts = Array.isArray(data) ? data : (data.features || []);
   } catch (err) {
+    if (TEST_MODE && fixtureName) {
+      console.error('Alerts fixture load failed', err);
+      addTestModeError(`Alerts fixture failed: ${fixtureName}`);
+      throw err;
+    }
+
     console.error("Alerts fetch failed", err);
     latestAlerts = [];
   }
 }
 
 
-function getMoonPhaseName(date = new Date()) {
+function getMoonPhaseName(date = getAppNow()) {
   const synodicMonth = 29.53058867;
   const knownNewMoon = new Date('2000-01-06T18:14:00Z');
 
@@ -1275,7 +1444,7 @@ function getMoonPhaseName(date = new Date()) {
   return 'New Moon';
 }
 
-function getMoonPhase(date = new Date()) {
+function getMoonPhase(date = getAppNow()) {
   const phase = getMoonPhaseName(date);
   const icons = {
     'New Moon': '🌑',
@@ -1316,7 +1485,7 @@ async function loadTides(beach, selectedDate) {
     return;
   }
 
-  const now = new Date();
+  const now = getAppNow();
   const isToday = isSameLocalDay(selectedDate, now);
   const next = isToday
     ? predictions.find(p => new Date(p.t) > now) || predictions[predictions.length - 1]
@@ -1478,7 +1647,7 @@ const innerHeight = height - pad.top - pad.bottom;
   const linePath = parsed.map((p, i) => `${i === 0 ? 'M' : 'L'} ${x(p.t.getTime()).toFixed(1)} ${y(p.v).toFixed(1)}`).join(' ');
   const areaPath = `${linePath} L ${x(parsed[parsed.length - 1].t.getTime()).toFixed(1)} ${(height - pad.bottom).toFixed(1)} L ${x(parsed[0].t.getTime()).toFixed(1)} ${(height - pad.bottom).toFixed(1)} Z`;
 
-  const now = new Date();
+  const now = getAppNow();
   const nowX = now >= new Date(minT) && now <= new Date(maxT) ? x(now.getTime()) : null;
 
   const yTicks = 4;
