@@ -158,6 +158,11 @@ select, .button {
   padding: 8px;
   min-height: 180px;
 }
+.wind-summary {
+  margin-top: 0;
+  margin-bottom: 10px;
+  font-weight: 600;
+}
 #notesList {
   margin: 0;
   padding-left: 1.25rem;

@@ -73,6 +73,7 @@ const sunsetTimeEl = document.getElementById('sunsetTime');
 const moonriseTimeEl = document.getElementById('moonriseTime');
 const moonsetTimeEl = document.getElementById('moonsetTime');
 const windChartEl = document.getElementById('windChart');
+const windSummaryEl = ensureWindSummaryEl();
 const tidesTitleEl = document.getElementById('tidesTitle');
 const nextTideEl = document.getElementById('nextTide');
 const moonPhaseEl = document.getElementById('moonPhase');
@@ -556,6 +557,18 @@ function ensureWeatherRangeEl() {
   return rangeEl;
 }
 
+function ensureWindSummaryEl() {
+  let summaryEl = document.getElementById('windSummary');
+  if (summaryEl) return summaryEl;
+
+  summaryEl = document.createElement('div');
+  summaryEl.id = 'windSummary';
+  summaryEl.className = 'updated wind-summary';
+  summaryEl.setAttribute('aria-live', 'polite');
+  windChartEl.insertAdjacentElement('beforebegin', summaryEl);
+  return summaryEl;
+}
+
 function getSelectedBeach() {
   return BEACHES.find(b => b.id === beachSelect.value) || BEACHES[0];
 }
@@ -861,6 +874,7 @@ function getWindChartPeriods(gridWindPeriods, gridDirectionPeriods, hourlyPeriod
 
 function renderWindChart(periods, beach, selectedDate) {
   if (!periods.length) {
+    windSummaryEl.textContent = '';
     windChartEl.textContent = 'Wind chart unavailable.';
     return;
   }
@@ -871,6 +885,7 @@ function renderWindChart(periods, beach, selectedDate) {
   const height = 220;
   const isPhone = window.innerWidth <= 600;
   const fontSmall = isPhone ? 24 : 11;
+  const fontMedium = isPhone ? 20 : 10;
   const pad = { top: 36, right: 12, bottom: 34, left: 34 };
   const maxSpeed = Math.max(...periods.map(period => period.speed));
   const chartMax = Math.max(10, Math.ceil(maxSpeed / 5) * 5);
@@ -879,6 +894,9 @@ function renderWindChart(periods, beach, selectedDate) {
   const barWidth = innerWidth / periods.length;
   const labelEvery = periods.length > 8 ? 2 : 1;
   const maxIndex = periods.findIndex(period => period.speed === maxSpeed);
+  const summary = getWindTrendSummary(periods);
+  const peakPeriod = periods[maxIndex] || null;
+  windSummaryEl.textContent = summary;
   const y = speed => pad.top + innerHeight - (speed / chartMax) * innerHeight;
 
   const yLabels = [0, Math.round(chartMax / 2), chartMax];
@@ -899,11 +917,15 @@ function renderWindChart(periods, beach, selectedDate) {
     const label = index % labelEvery === 0
       ? `<text x="${(x + w / 2).toFixed(1)}" y="${height - 10}" text-anchor="middle" font-size="${fontSmall}" fill="#64748b">${formatCompactHour(period.startTime)}</text>`
       : '';
+    const peakLabel = index === maxIndex
+      ? `<text x="${(x + w / 2).toFixed(1)}" y="${Math.max(12, top - 22).toFixed(1)}" text-anchor="middle" font-size="${fontMedium}" font-weight="600" fill="#0f766e">Peak</text>`
+      : '';
     const description = `${formatTimeNoSeconds(period.startTime)}, ${period.speed} mph${Number.isFinite(period.directionDeg) ? `, ${Math.round(period.directionDeg)} degrees` : ''}`;
 
     return `
       <g>
         <title>${description}</title>
+        ${peakLabel}
         <rect x="${x.toFixed(1)}" y="${top.toFixed(1)}" width="${w.toFixed(1)}" height="${barHeight.toFixed(1)}" rx="4" fill="${fill}" />
         ${arrow}
         ${label}
@@ -911,12 +933,56 @@ function renderWindChart(periods, beach, selectedDate) {
     `;
   }).join('');
 
+  const chartAriaLabel = peakPeriod
+    ? `${summary}. Daytime wind for ${beach.displayName} on ${formatLongDate(selectedDate)}. Peak wind ${peakPeriod.speed} mph around ${formatTimeNoSeconds(peakPeriod.startTime)}.`
+    : `${summary}. Daytime wind for ${beach.displayName} on ${formatLongDate(selectedDate)}.`;
+
   windChartEl.innerHTML = `
-    <svg viewBox="0 0 ${width} ${height}" style="width:100%;height:auto;display:block;" role="img" aria-label="Daytime wind for ${beach.displayName} on ${formatLongDate(selectedDate)}">
+    <svg viewBox="0 0 ${width} ${height}" style="width:100%;height:auto;display:block;" role="img" aria-label="${chartAriaLabel}">
       ${yGrid}
       ${bars}
     </svg>
   `;
+}
+
+function getWindTrendSummary(periods) {
+  if (!periods.length) return 'Wind stays fairly steady today';
+
+  const speeds = periods.map(period => period.speed);
+  const minSpeed = Math.min(...speeds);
+  const maxSpeed = Math.max(...speeds);
+  const firstSpeed = speeds[0];
+  const lastSpeed = speeds[speeds.length - 1];
+  const peakIndex = periods.findIndex(period => period.speed === maxSpeed);
+  const range = maxSpeed - minSpeed;
+
+  if (range <= 4) {
+    return 'Wind stays fairly steady today';
+  }
+
+  const peakPeriod = periods[peakIndex];
+  const hasInteriorPeak = peakIndex > 0 && peakIndex < periods.length - 1;
+  const leftMin = Math.min(...speeds.slice(0, peakIndex));
+  const rightMin = Math.min(...speeds.slice(peakIndex + 1));
+  const peakStandsOut = hasInteriorPeak && maxSpeed - Math.max(leftMin, rightMin) >= 3;
+
+  if (peakStandsOut && peakIndex >= Math.ceil(periods.length * 0.66)) {
+    return 'Wind builds late morning, then eases';
+  }
+
+  if (peakStandsOut) {
+    return `Wind peaks around ${formatTimeNoSeconds(peakPeriod.startTime)}`;
+  }
+
+  if (lastSpeed - firstSpeed >= 4) {
+    return 'Wind builds through the afternoon';
+  }
+
+  if (firstSpeed - lastSpeed >= 4) {
+    return 'Wind eases through the afternoon';
+  }
+
+  return 'Wind stays fairly steady today';
 }
 
 function renderWindArrow(cx, cy, directionDeg) {
@@ -1714,7 +1780,11 @@ function formatTimeNoSeconds(value) {
 }
 
 function formatCompactHour(value) {
-  return new Date(value).toLocaleTimeString([], { hour: 'numeric' }).toLowerCase().replace(' ', '');
+  const date = new Date(value);
+  const hour = date.getHours();
+  const suffix = hour >= 12 ? 'p' : 'a';
+  const hour12 = hour % 12 || 12;
+  return `${hour12}${suffix}`;
 }
 
 function formatShortDate(value) {
