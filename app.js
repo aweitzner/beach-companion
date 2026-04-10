@@ -1,4 +1,4 @@
-const APP_VERSION = 'v1.4.20';
+const APP_VERSION = 'v1.5.0';
 const queryParams = new URLSearchParams(window.location.search);
 const TEST_MODE = queryParams.get('testMode') === '1';
 const TEST_MODE_CONFIG = Object.freeze({
@@ -12,6 +12,19 @@ const TEST_MODE_CONFIG = Object.freeze({
 });
 const SIMULATED_NOW = parseSimulatedNow(TEST_MODE_CONFIG.simNowRaw);
 const testModeErrors = [];
+// Simplified NJ shoreline diagram derived from NOAA ENC shoreline geometry:
+// https://shoreline.noaa.gov/enc.html
+const NJ_WIND_DIAGRAM = Object.freeze({
+  viewBox: '0 0 120 260',
+  landPath: 'M 12 10 L 42 10 C 48 12 54 16 60 24 C 64 30 66 35 69 39 C 73 46 77 48 78 54 C 76 58 71 60 67 63 C 63 67 62 72 64 77 C 68 84 68 91 65 99 C 62 108 60 115 60 123 C 60 133 58 143 55 153 C 53 161 53 170 54 178 C 55 188 54 197 50 207 C 46 217 42 226 38 235 C 34 243 30 248 23 250 L 12 250 Z',
+  coastPath: 'M 42 10 C 48 12 54 16 60 24 C 64 30 66 35 69 39 C 73 46 77 48 78 54 C 76 58 71 60 67 63 C 63 67 62 72 64 77 C 68 84 68 91 65 99 C 62 108 60 115 60 123 C 60 133 58 143 55 153 C 53 161 53 170 54 178 C 55 188 54 197 50 207 C 46 217 42 226 38 235 C 34 243 30 248 23 250',
+  beaches: Object.freeze({
+    sandy_hook: { x: 71, y: 48 },
+    asbury_park: { x: 63, y: 88 },
+    belmar: { x: 61, y: 101 },
+    cape_may: { x: 35, y: 234 }
+  })
+});
 const BEACHES = [
   {
     id: 'sandy_hook',
@@ -74,6 +87,7 @@ const moonriseTimeEl = document.getElementById('moonriseTime');
 const moonsetTimeEl = document.getElementById('moonsetTime');
 const windChartEl = document.getElementById('windChart');
 const windSummaryEl = ensureWindSummaryEl();
+const windDiagramEl = ensureWindDiagramEl();
 const tidesTitleEl = document.getElementById('tidesTitle');
 const nextTideEl = document.getElementById('nextTide');
 const moonPhaseEl = document.getElementById('moonPhase');
@@ -569,6 +583,17 @@ function ensureWindSummaryEl() {
   return summaryEl;
 }
 
+function ensureWindDiagramEl() {
+  let diagramEl = document.getElementById('windDiagram');
+  if (diagramEl) return diagramEl;
+
+  diagramEl = document.createElement('div');
+  diagramEl.id = 'windDiagram';
+  diagramEl.className = 'wind-diagram';
+  windChartEl.insertAdjacentElement('beforebegin', diagramEl);
+  return diagramEl;
+}
+
 function getSelectedBeach() {
   return BEACHES.find(b => b.id === beachSelect.value) || BEACHES[0];
 }
@@ -875,6 +900,7 @@ function getWindChartPeriods(gridWindPeriods, gridDirectionPeriods, hourlyPeriod
 function renderWindChart(periods, beach, selectedDate) {
   if (!periods.length) {
     windSummaryEl.textContent = '';
+    renderWindDiagram(beach, null, selectedDate);
     windChartEl.textContent = 'Wind chart unavailable.';
     return;
   }
@@ -882,11 +908,11 @@ function renderWindChart(periods, beach, selectedDate) {
   // The chart is intentionally simple: one daytime bar per hour, a direction
   // arrow above each bar, and a highlight for the first strongest-wind hour.
   const width = 640;
-  const height = 220;
+  const height = 232;
   const isPhone = window.innerWidth <= 600;
   const fontSmall = isPhone ? 24 : 11;
-  const fontMedium = isPhone ? 22 : 14;
-  const pad = { top: 36, right: 12, bottom: 34, left: 34 };
+  const fontMedium = isPhone ? 18 : 10;
+  const pad = { top: 48, right: 12, bottom: 34, left: 34 };
   const maxSpeed = Math.max(...periods.map(period => period.speed));
   const chartMax = Math.max(10, Math.ceil(maxSpeed / 5) * 5);
   const innerWidth = width - pad.left - pad.right;
@@ -897,6 +923,7 @@ function renderWindChart(periods, beach, selectedDate) {
   const summary = getWindTrendSummary(periods);
   const peakPeriod = periods[maxIndex] || null;
   windSummaryEl.textContent = summary;
+  renderWindDiagram(beach, peakPeriod, selectedDate);
   const y = speed => pad.top + innerHeight - (speed / chartMax) * innerHeight;
 
   const yLabels = [0, Math.round(chartMax / 2), chartMax];
@@ -910,7 +937,7 @@ function renderWindChart(periods, beach, selectedDate) {
     const w = barWidth * 0.7;
     const top = y(period.speed);
     const barHeight = innerHeight - (top - pad.top);
-    const fill = index === maxIndex ? '#8250df' : '#60a5fa';
+    const fill = index === maxIndex ? '#3b82f6' : '#60a5fa';
     const arrow = Number.isFinite(period.directionDeg)
       ? renderWindArrow(x + w / 2, top - 14, period.directionDeg)
       : '';
@@ -918,7 +945,7 @@ function renderWindChart(periods, beach, selectedDate) {
       ? `<text x="${(x + w / 2).toFixed(1)}" y="${height - 10}" text-anchor="middle" font-size="${fontSmall}" fill="#64748b">${formatCompactHour(period.startTime)}</text>`
       : '';
     const peakLabel = index === maxIndex
-      ? `<text x="${(x + w / 2).toFixed(1)}" y="${(top + barHeight / 2).toFixed(1)}" text-anchor="middle" dominant-baseline="middle" font-size="${fontMedium}" font-weight="700" letter-spacing="0.6" fill="#ffffff" transform="rotate(-90 ${(x + w / 2).toFixed(1)} ${(top + barHeight / 2).toFixed(1)})">Peak</text>`
+      ? `<text x="${(x + w / 2).toFixed(1)}" y="${Math.max(14, top - 30).toFixed(1)}" text-anchor="middle" font-size="${fontMedium}" font-weight="600" fill="#1d4ed8">Peak</text>`
       : '';
     const description = `${formatTimeNoSeconds(period.startTime)}, ${period.speed} mph${Number.isFinite(period.directionDeg) ? `, ${Math.round(period.directionDeg)} degrees` : ''}`;
 
@@ -926,8 +953,8 @@ function renderWindChart(periods, beach, selectedDate) {
       <g>
         <title>${description}</title>
         <rect x="${x.toFixed(1)}" y="${top.toFixed(1)}" width="${w.toFixed(1)}" height="${barHeight.toFixed(1)}" rx="4" fill="${fill}" />
-        ${arrow}
         ${peakLabel}
+        ${arrow}
         ${label}
       </g>
     `;
@@ -942,6 +969,62 @@ function renderWindChart(periods, beach, selectedDate) {
       ${yGrid}
       ${bars}
     </svg>
+  `;
+}
+
+function renderWindDiagram(beach, peakPeriod, selectedDate) {
+  if (!isNjWindDiagramBeach(beach)) {
+    windDiagramEl.innerHTML = '';
+    windDiagramEl.hidden = true;
+    return;
+  }
+
+  const marker = NJ_WIND_DIAGRAM.beaches[beach.id];
+  if (!marker) {
+    windDiagramEl.innerHTML = '';
+    windDiagramEl.hidden = true;
+    return;
+  }
+
+  windDiagramEl.hidden = false;
+
+  const arrowCx = marker.x + 22;
+  const arrowCy = marker.y;
+  const arrow = Number.isFinite(peakPeriod?.directionDeg)
+    ? renderWindDiagramArrow(arrowCx, arrowCy, peakPeriod.directionDeg)
+    : '';
+  const diagramLabel = peakPeriod
+    ? `New Jersey shoreline diagram for ${beach.displayName} on ${formatLongDate(selectedDate)}. Beach marker shown with peak wind direction near ${formatTimeNoSeconds(peakPeriod.startTime)}.`
+    : `New Jersey shoreline diagram for ${beach.displayName} on ${formatLongDate(selectedDate)}. Beach marker shown without a peak wind arrow.`;
+
+  windDiagramEl.innerHTML = `
+    <svg viewBox="${NJ_WIND_DIAGRAM.viewBox}" class="wind-diagram-svg" role="img" aria-label="${diagramLabel}">
+      <rect x="0" y="0" width="120" height="260" rx="18" fill="#eff6ff" />
+      <path d="${NJ_WIND_DIAGRAM.landPath}" fill="#f8fafc" />
+      <path d="${NJ_WIND_DIAGRAM.coastPath}" fill="none" stroke="#94a3b8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+      <circle cx="${marker.x}" cy="${marker.y}" r="4.8" fill="#0f766e" stroke="#ffffff" stroke-width="2" />
+      <circle cx="${marker.x}" cy="${marker.y}" r="8.5" fill="none" stroke="rgba(15, 118, 110, 0.28)" stroke-width="2" />
+      ${arrow}
+    </svg>
+  `;
+}
+
+function isNjWindDiagramBeach(beach) {
+  return ['sandy_hook', 'asbury_park', 'belmar', 'cape_may'].includes(beach?.id);
+}
+
+function renderWindDiagramArrow(cx, cy, directionDeg) {
+  const flowDeg = (directionDeg + 180) % 360;
+  const shaftTop = cy - 14;
+  const shaftBottom = cy + 14;
+  const leftX = cx - 6;
+  const rightX = cx + 6;
+
+  return `
+    <g transform="rotate(${flowDeg.toFixed(1)} ${cx.toFixed(1)} ${cy.toFixed(1)})">
+      <line x1="${cx.toFixed(1)}" y1="${shaftBottom.toFixed(1)}" x2="${cx.toFixed(1)}" y2="${shaftTop.toFixed(1)}" stroke="#0f172a" stroke-width="3" stroke-linecap="round" />
+      <path d="M ${leftX.toFixed(1)} ${(shaftTop + 6).toFixed(1)} L ${cx.toFixed(1)} ${shaftTop.toFixed(1)} L ${rightX.toFixed(1)} ${(shaftTop + 6).toFixed(1)}" fill="none" stroke="#0f172a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+    </g>
   `;
 }
 
