@@ -158,17 +158,12 @@ select, .button {
   padding: 8px;
   min-height: 180px;
 }
-#notesList li {
-  position: relative;
-  list-style: none;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+#notesList {
+  margin: 0;
+  padding-left: 1.25rem;
 }
-#notesList li::before {
-  content: "\2022";
-  position: absolute;
-  left: -0.9rem;
+#notesList li {
+  list-style: disc;
 }
 .tide-item {
   display: flex;

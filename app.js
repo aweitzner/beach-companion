@@ -947,8 +947,8 @@ function getClothingRecommendation(selectedDate, range, strongestWindSpeed) {
 
   const beachMode = isBeachMode(selectedDate);
   const labels = beachMode
-    ? ['T-shirt', 'Long sleeve', 'Sweatshirt', 'Bring a blanket']
-    : ['Shorts', 'Sweatshirt', 'Need a coat', 'Bundle up'];
+    ? ['You’ll be good in a T-shirt', 'You may want a long sleeve', 'Bring a sweatshirt', 'Bring layers if you’re staying late']
+    : ['You’ll be fine with a light layer', 'Bring a sweatshirt', 'You’ll want a coat', 'Bundle up out there'];
 
   let level;
 
