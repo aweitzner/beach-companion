@@ -1,4 +1,4 @@
-const APP_VERSION = 'v1.5.5';
+const APP_VERSION = 'v1.5.6';
 const queryParams = new URLSearchParams(window.location.search);
 const TEST_MODE = queryParams.get('testMode') === '1';
 const TEST_MODE_CONFIG = Object.freeze({
@@ -38,6 +38,13 @@ const WIND_REGION_PANELS = Object.freeze({
     imageHeight: 500,
     marker: Object.freeze({ x: 35, y: 88 }),
     arrowOffset: Object.freeze({ x: 18, y: -8 })
+  }),
+  bar_harbor: Object.freeze({
+    imagePath: 'assets/wind-panels/bar-harbor.png',
+    imageWidth: 418,
+    imageHeight: 488,
+    marker: Object.freeze({ x: 50, y: 52 }),
+    arrowOffset: Object.freeze({ x: 18, y: -6 })
   })
 });
 const BEACHES = [
@@ -1061,6 +1068,13 @@ function getWindDiagramPanelSelection(beach) {
     return {
       panel: WIND_REGION_PANELS.cape_may,
       marker: WIND_REGION_PANELS.cape_may.marker
+    };
+  }
+
+  if (beach.id === 'bar_harbor') {
+    return {
+      panel: WIND_REGION_PANELS.bar_harbor,
+      marker: WIND_REGION_PANELS.bar_harbor.marker
     };
   }
 
