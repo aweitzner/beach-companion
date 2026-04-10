@@ -1,4 +1,4 @@
-const APP_VERSION = 'v1.4.18';
+const APP_VERSION = 'v1.4.20';
 const queryParams = new URLSearchParams(window.location.search);
 const TEST_MODE = queryParams.get('testMode') === '1';
 const TEST_MODE_CONFIG = Object.freeze({
@@ -885,7 +885,7 @@ function renderWindChart(periods, beach, selectedDate) {
   const height = 220;
   const isPhone = window.innerWidth <= 600;
   const fontSmall = isPhone ? 24 : 11;
-  const fontMedium = isPhone ? 20 : 10;
+  const fontMedium = isPhone ? 22 : 14;
   const pad = { top: 36, right: 12, bottom: 34, left: 34 };
   const maxSpeed = Math.max(...periods.map(period => period.speed));
   const chartMax = Math.max(10, Math.ceil(maxSpeed / 5) * 5);
@@ -918,16 +918,16 @@ function renderWindChart(periods, beach, selectedDate) {
       ? `<text x="${(x + w / 2).toFixed(1)}" y="${height - 10}" text-anchor="middle" font-size="${fontSmall}" fill="#64748b">${formatCompactHour(period.startTime)}</text>`
       : '';
     const peakLabel = index === maxIndex
-      ? `<text x="${(x + w / 2).toFixed(1)}" y="${(top + barHeight - 10).toFixed(1)}" text-anchor="middle" font-size="${fontMedium}" font-weight="700" letter-spacing="0.5" fill="#ffffff" transform="rotate(-90 ${(x + w / 2).toFixed(1)} ${(top + barHeight - 10).toFixed(1)})">Peak</text>`
+      ? `<text x="${(x + w / 2).toFixed(1)}" y="${(top + barHeight / 2).toFixed(1)}" text-anchor="middle" dominant-baseline="middle" font-size="${fontMedium}" font-weight="700" letter-spacing="0.6" fill="#ffffff" transform="rotate(-90 ${(x + w / 2).toFixed(1)} ${(top + barHeight / 2).toFixed(1)})">Peak</text>`
       : '';
     const description = `${formatTimeNoSeconds(period.startTime)}, ${period.speed} mph${Number.isFinite(period.directionDeg) ? `, ${Math.round(period.directionDeg)} degrees` : ''}`;
 
     return `
       <g>
         <title>${description}</title>
-        ${peakLabel}
         <rect x="${x.toFixed(1)}" y="${top.toFixed(1)}" width="${w.toFixed(1)}" height="${barHeight.toFixed(1)}" rx="4" fill="${fill}" />
         ${arrow}
+        ${peakLabel}
         ${label}
       </g>
     `;
