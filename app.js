@@ -1,4 +1,4 @@
-const APP_VERSION = 'v1.5.13';
+const APP_VERSION = 'v1.5.14';
 const queryParams = new URLSearchParams(window.location.search);
 const TEST_MODE = queryParams.get('testMode') === '1';
 const TEST_MODE_CONFIG = Object.freeze({
@@ -625,8 +625,8 @@ function ensureWindVisualsEl() {
   visualsEl.id = 'windVisuals';
   visualsEl.className = 'wind-visuals';
   windDiagramEl.insertAdjacentElement('beforebegin', visualsEl);
-  visualsEl.appendChild(windChartEl);
   visualsEl.appendChild(windDiagramEl);
+  visualsEl.appendChild(windChartEl);
   return visualsEl;
 }
 
@@ -1029,6 +1029,13 @@ function renderWindDiagram(beach, peakPeriod, selectedDate) {
     : `Coastal wind diagram for ${beach.displayName} on ${formatLongDate(selectedDate)}. Beach marker shown without a peak wind arrow.`;
 
   windDiagramEl.innerHTML = `
+    <div class="wind-diagram-north" aria-hidden="true">
+      <svg viewBox="0 0 24 24" class="wind-diagram-north-svg">
+        <circle cx="12" cy="12" r="11" fill="rgba(255,255,255,0.92)" stroke="rgba(15,23,42,0.12)" stroke-width="1" />
+        <text x="12" y="8.6" text-anchor="middle" font-size="6.5" font-weight="700" fill="#0f172a">N</text>
+        <path d="M 12 18 L 8.9 12.3 L 12 5.8 L 15.1 12.3 Z" fill="#0f172a" />
+      </svg>
+    </div>
     <div class="wind-diagram-map" role="img" aria-label="${diagramLabel}" style="background-image:url('${panel.imagePath}')">
       <svg viewBox="0 0 100 100" class="wind-diagram-overlay" aria-hidden="true">
         <defs>
@@ -1039,11 +1046,6 @@ function renderWindDiagram(beach, peakPeriod, selectedDate) {
             <feDropShadow dx="0" dy="6" stdDeviation="4" flood-color="rgba(130, 80, 223, 0.24)" />
           </filter>
         </defs>
-        <g class="wind-diagram-north" transform="translate(14 85)">
-          <circle cx="0" cy="0" r="7" fill="rgba(255,255,255,0.88)" stroke="rgba(15,23,42,0.12)" stroke-width="0.6" />
-          <text x="0" y="-1.8" text-anchor="middle" font-size="4.1" font-weight="700" fill="#0f172a">N</text>
-          <path d="M 0 6.2 L -2.2 2.2 L 0 -2.8 L 2.2 2.2 Z" fill="#0f172a" />
-        </g>
         <circle cx="${marker.x}" cy="${marker.y}" r="2.3" fill="#3b82f6" stroke="#ffffff" stroke-width="1.2" filter="url(#markerGlow)" />
         <circle cx="${marker.x}" cy="${marker.y}" r="4.2" fill="none" stroke="rgba(255,255,255,0.72)" stroke-width="0.9" />
         ${arrow}

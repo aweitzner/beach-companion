@@ -159,7 +159,9 @@ select, .button {
   min-height: 180px;
 }
 .wind-visuals {
-  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
 }
 .wind-summary {
   margin-top: 0;
@@ -167,30 +169,38 @@ select, .button {
   font-weight: 600;
 }
 .wind-diagram {
-  position: absolute;
-  top: -98px;
-  right: 12px;
-  width: clamp(68px, 12vw, 88px);
-  border-radius: 18px;
-  background: linear-gradient(180deg, #f8fbff 0%, #eef6ff 100%);
-  padding: 6px;
-  margin-bottom: 0;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45);
-  z-index: 2;
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  align-self: flex-end;
+  margin: -44px 0 10px;
 }
 .wind-diagram[hidden] {
   display: none;
 }
+.wind-diagram-north {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+}
+.wind-diagram-north-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
 .wind-diagram-map {
   position: relative;
-  width: 100%;
+  width: clamp(68px, 12vw, 88px);
+  flex: 0 0 auto;
   display: block;
   min-height: 0;
   aspect-ratio: 1 / 1;
-  border-radius: 14px;
+  border-radius: 12px;
   overflow: hidden;
   background-size: cover;
   background-position: center;
+  border: 1px solid rgba(219, 234, 254, 0.95);
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.08);
 }
 .wind-diagram-overlay {
   position: absolute;
@@ -198,9 +208,6 @@ select, .button {
   width: 100%;
   height: 100%;
   display: block;
-}
-.wind-visuals .wind-chart {
-  padding-top: 12px;
 }
 #notesList {
   margin: 0;
@@ -258,14 +265,21 @@ select, .button {
   }
 
   .wind-diagram {
-    top: -80px;
-    right: 10px;
+    gap: 5px;
+    margin: -34px 0 8px;
+  }
+
+  .wind-diagram-north {
+    width: 18px;
+    height: 18px;
+  }
+
+  .wind-diagram-map {
     width: clamp(56px, 18vw, 72px);
   }
 
   .wind-chart {
     min-height: 0;
-    padding-top: 8px;
   }
 
   .day-button strong {
