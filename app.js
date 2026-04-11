@@ -1,4 +1,4 @@
-const APP_VERSION = 'v1.5.15';
+const APP_VERSION = 'v1.5.16';
 const queryParams = new URLSearchParams(window.location.search);
 const TEST_MODE = queryParams.get('testMode') === '1';
 const TEST_MODE_CONFIG = Object.freeze({
@@ -1048,9 +1048,11 @@ function renderWindDiagram(beach, peakPeriod, selectedDate) {
   windDiagramEl.innerHTML = `
     <div class="wind-diagram-north" aria-hidden="true">
       <svg viewBox="0 0 24 24" class="wind-diagram-north-svg">
-        <circle cx="12" cy="12" r="11" fill="rgba(255,255,255,0.92)" stroke="rgba(15,23,42,0.12)" stroke-width="1" />
-        <text x="12" y="8.6" text-anchor="middle" font-size="6.5" font-weight="700" fill="#0f172a">N</text>
-        <path d="M 12 18 L 8.9 12.3 L 12 5.8 L 15.1 12.3 Z" fill="#0f172a" />
+        <circle cx="12" cy="12" r="11" fill="rgba(255,255,255,0.96)" stroke="#0f172a" stroke-width="1.1" />
+        <circle cx="12" cy="12" r="9.1" fill="none" stroke="rgba(15,23,42,0.2)" stroke-width="0.7" />
+        <path d="M 12 4.9 L 6.9 17.3 L 12 14.8 L 17.1 17.3 Z" fill="#0f172a" />
+        <path d="M 12 7.2 L 9.1 14.4 L 12 13.1 Z" fill="#ffffff" />
+        <text x="12" y="22.1" text-anchor="middle" font-size="4.2" font-weight="700" fill="#0f172a">N</text>
       </svg>
     </div>
     <div class="wind-diagram-map" role="img" aria-label="${diagramLabel}" style="background-image:url('${panel.imagePath}')">

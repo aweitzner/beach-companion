@@ -190,10 +190,10 @@ select, .button {
   display: none;
 }
 .wind-diagram-north {
-  width: 20px;
-  height: 20px;
+  width: 30px;
+  height: 30px;
   flex: 0 0 auto;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
 }
 .wind-diagram-north-svg {
   width: 100%;
@@ -281,9 +281,9 @@ select, .button {
   }
 
   .wind-diagram-north {
-    width: 16px;
-    height: 16px;
-    margin-bottom: 3px;
+    width: 24px;
+    height: 24px;
+    margin-bottom: 5px;
   }
 
   .wind-diagram-map {
