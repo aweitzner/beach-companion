@@ -168,7 +168,7 @@ select, .button {
 }
 .wind-diagram {
   position: absolute;
-  top: 12px;
+  top: -42px;
   right: 12px;
   width: clamp(86px, 18vw, 128px);
   border-radius: 18px;
@@ -258,7 +258,7 @@ select, .button {
   }
 
   .wind-diagram {
-    top: 10px;
+    top: -34px;
     right: 10px;
     width: clamp(72px, 22vw, 92px);
   }
