@@ -168,9 +168,9 @@ select, .button {
 }
 .wind-diagram {
   position: absolute;
-  top: -42px;
+  top: -98px;
   right: 12px;
-  width: clamp(86px, 18vw, 128px);
+  width: clamp(68px, 12vw, 88px);
   border-radius: 18px;
   background: linear-gradient(180deg, #f8fbff 0%, #eef6ff 100%);
   padding: 6px;
@@ -186,7 +186,7 @@ select, .button {
   width: 100%;
   display: block;
   min-height: 0;
-  aspect-ratio: 1 / 1.2;
+  aspect-ratio: 1 / 1;
   border-radius: 14px;
   overflow: hidden;
   background-size: cover;
@@ -258,9 +258,9 @@ select, .button {
   }
 
   .wind-diagram {
-    top: -34px;
+    top: -80px;
     right: 10px;
-    width: clamp(72px, 22vw, 92px);
+    width: clamp(56px, 18vw, 72px);
   }
 
   .wind-chart {
