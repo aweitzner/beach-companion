@@ -1,4 +1,4 @@
-const APP_VERSION = 'v1.5.14';
+const APP_VERSION = 'v1.5.15';
 const queryParams = new URLSearchParams(window.location.search);
 const TEST_MODE = queryParams.get('testMode') === '1';
 const TEST_MODE_CONFIG = Object.freeze({
@@ -108,8 +108,11 @@ const sunsetTimeEl = document.getElementById('sunsetTime');
 const moonriseTimeEl = document.getElementById('moonriseTime');
 const moonsetTimeEl = document.getElementById('moonsetTime');
 const windChartEl = document.getElementById('windChart');
+const windCardEl = windChartEl.closest('.card');
+const windHeadingEl = windCardEl?.querySelector('h2');
 const windSummaryEl = ensureWindSummaryEl();
 const windDiagramEl = ensureWindDiagramEl();
+const windHeadingRowEl = ensureWindHeadingRowEl();
 const windVisualsEl = ensureWindVisualsEl();
 const tidesTitleEl = document.getElementById('tidesTitle');
 const nextTideEl = document.getElementById('nextTide');
@@ -624,10 +627,24 @@ function ensureWindVisualsEl() {
   visualsEl = document.createElement('div');
   visualsEl.id = 'windVisuals';
   visualsEl.className = 'wind-visuals';
-  windDiagramEl.insertAdjacentElement('beforebegin', visualsEl);
-  visualsEl.appendChild(windDiagramEl);
+  windSummaryEl.insertAdjacentElement('beforebegin', visualsEl);
+  visualsEl.appendChild(windSummaryEl);
   visualsEl.appendChild(windChartEl);
   return visualsEl;
+}
+
+function ensureWindHeadingRowEl() {
+  let headingRowEl = document.getElementById('windHeadingRow');
+  if (headingRowEl) return headingRowEl;
+  if (!windCardEl || !windHeadingEl) return null;
+
+  headingRowEl = document.createElement('div');
+  headingRowEl.id = 'windHeadingRow';
+  headingRowEl.className = 'wind-heading-row';
+  windHeadingEl.insertAdjacentElement('beforebegin', headingRowEl);
+  headingRowEl.appendChild(windHeadingEl);
+  headingRowEl.appendChild(windDiagramEl);
+  return headingRowEl;
 }
 
 function getSelectedBeach() {
