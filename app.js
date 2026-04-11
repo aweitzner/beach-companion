@@ -1,4 +1,4 @@
-const APP_VERSION = 'v1.5.8';
+const APP_VERSION = 'v1.5.9';
 const queryParams = new URLSearchParams(window.location.search);
 const TEST_MODE = queryParams.get('testMode') === '1';
 const TEST_MODE_CONFIG = Object.freeze({
@@ -625,8 +625,8 @@ function ensureWindVisualsEl() {
   visualsEl.id = 'windVisuals';
   visualsEl.className = 'wind-visuals';
   windDiagramEl.insertAdjacentElement('beforebegin', visualsEl);
-  visualsEl.appendChild(windDiagramEl);
   visualsEl.appendChild(windChartEl);
+  visualsEl.appendChild(windDiagramEl);
   return visualsEl;
 }
 
@@ -1039,6 +1039,11 @@ function renderWindDiagram(beach, peakPeriod, selectedDate) {
             <feDropShadow dx="0" dy="6" stdDeviation="4" flood-color="rgba(130, 80, 223, 0.24)" />
           </filter>
         </defs>
+        <g class="wind-diagram-north" transform="translate(14 85)">
+          <circle cx="0" cy="0" r="7" fill="rgba(255,255,255,0.88)" stroke="rgba(15,23,42,0.12)" stroke-width="0.6" />
+          <text x="0" y="-1.8" text-anchor="middle" font-size="4.1" font-weight="700" fill="#0f172a">N</text>
+          <path d="M 0 6.2 L -2.2 2.2 L 0 -2.8 L 2.2 2.2 Z" fill="#0f172a" />
+        </g>
         <circle cx="${marker.x}" cy="${marker.y}" r="2.3" fill="#3b82f6" stroke="#ffffff" stroke-width="1.2" filter="url(#markerGlow)" />
         <circle cx="${marker.x}" cy="${marker.y}" r="4.2" fill="none" stroke="rgba(255,255,255,0.72)" stroke-width="0.9" />
         ${arrow}
