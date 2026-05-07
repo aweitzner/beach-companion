@@ -1,4 +1,4 @@
-const APP_VERSION = 'v1.5.16';
+const APP_VERSION = 'v1.5.25';
 const queryParams = new URLSearchParams(window.location.search);
 const TEST_MODE = queryParams.get('testMode') === '1';
 const TEST_MODE_CONFIG = Object.freeze({
@@ -108,6 +108,8 @@ const sunsetTimeEl = document.getElementById('sunsetTime');
 const moonriseTimeEl = document.getElementById('moonriseTime');
 const moonsetTimeEl = document.getElementById('moonsetTime');
 const windChartEl = document.getElementById('windChart');
+const temperatureChartEl = document.getElementById('temperatureChart');
+const precipitationChartEl = document.getElementById('precipitationChart');
 const windCardEl = windChartEl.closest('.card');
 const windHeadingEl = windCardEl?.querySelector('h2');
 const windSummaryEl = ensureWindSummaryEl();
@@ -950,6 +952,224 @@ function getWindChartPeriods(gridWindPeriods, gridDirectionPeriods, hourlyPeriod
     .sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
 }
 
+function getTemperatureChartPeriods(gridTemperaturePeriods, hourlyPeriods, selectedDate) {
+  const map = new Map();
+
+  gridTemperaturePeriods.forEach(period => {
+    if (!Number.isFinite(period?.temperature)) return;
+    if (!isDaytimeForecastHour(period.startTime, selectedDate)) return;
+    map.set(period.startTime, {
+      startTime: period.startTime,
+      temperature: period.temperature
+    });
+  });
+
+  if (!map.size) {
+    getForecastPeriodsForDate(hourlyPeriods, selectedDate)
+      .filter(period => isDaytimeForecastHour(period.startTime, selectedDate))
+      .forEach(period => {
+        if (!Number.isFinite(period?.temperature)) return;
+        map.set(period.startTime, {
+          startTime: period.startTime,
+          temperature: period.temperature
+        });
+      });
+  }
+
+  return [...map.values()].sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
+}
+
+function getPrecipitationChartPeriods(hourlyPeriods, selectedDate) {
+  return getForecastPeriodsForDate(hourlyPeriods, selectedDate)
+    .filter(period => isDaytimeForecastHour(period.startTime, selectedDate))
+    .map(period => {
+      const value = period?.probabilityOfPrecipitation?.value;
+      return {
+        startTime: period.startTime,
+        precipitationProbability: Number.isFinite(value) ? value : null
+      };
+    })
+    .sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
+}
+
+function getDayChartLayout(selectedDate) {
+  const width = 640;
+  const height = 232;
+  const isPhone = window.innerWidth <= 600;
+  const fontSmall = isPhone ? 24 : 11;
+  const fontMedium = isPhone ? 18 : 10;
+  const pad = { top: 24, right: 12, bottom: 34, left: isPhone ? 68 : 40 };
+  const innerWidth = width - pad.left - pad.right;
+  const innerHeight = height - pad.top - pad.bottom;
+  const axisStart = new Date(selectedDate);
+  axisStart.setHours(6, 0, 0, 0);
+  const axisEnd = new Date(selectedDate);
+  axisEnd.setHours(18, 0, 0, 0);
+  const labelHours = [6, 8, 10, 12, 14, 16, 18];
+  const hourSpan = Math.max(1, (axisEnd.getTime() - axisStart.getTime()) / (60 * 60 * 1000));
+
+  return {
+    width,
+    height,
+    fontSmall,
+    fontMedium,
+    pad,
+    innerWidth,
+    innerHeight,
+    axisStart,
+    axisEnd,
+    labelHours,
+    getXForTime(value) {
+      const time = new Date(value).getTime();
+      const progress = (time - axisStart.getTime()) / Math.max(1, axisEnd.getTime() - axisStart.getTime());
+      return pad.left + Math.max(0, Math.min(1, progress)) * innerWidth;
+    },
+    getBarWidth() {
+      return (innerWidth / hourSpan) * 0.72;
+    },
+    getWindBarWidth() {
+      return (innerWidth / hourSpan) * 0.62;
+    },
+    getHourSlotWidth() {
+      return innerWidth / hourSpan;
+    },
+    getXForHour(hour) {
+      const progress = (hour - 6) / hourSpan;
+      return pad.left + Math.max(0, Math.min(1, progress)) * innerWidth;
+    },
+    getTimeLabelText(hour) {
+      const dt = new Date(axisStart);
+      dt.setHours(hour, 0, 0, 0);
+      return formatCompactHour(dt);
+    },
+    getNowX(now = getAppNow()) {
+      if (now < axisStart || now > axisEnd) return null;
+      const progress = (now.getTime() - axisStart.getTime()) / Math.max(1, axisEnd.getTime() - axisStart.getTime());
+      return pad.left + Math.max(0, Math.min(1, progress)) * innerWidth;
+    },
+    getBarCenterForTime(value) {
+      return this.getXForTime(value) + this.getHourSlotWidth() / 2;
+    }
+  };
+}
+
+function renderChartNowLine(layout, selectedDate) {
+  if (!isSameLocalDay(selectedDate, getAppNow())) return '';
+
+  const x = layout.getNowX(getAppNow());
+  if (x === null) return '';
+
+  return `<line x1="${x.toFixed(1)}" y1="${layout.pad.top}" x2="${x.toFixed(1)}" y2="${layout.height - layout.pad.bottom}" stroke="#ef4444" stroke-width="2" stroke-dasharray="5 4" />
+<text x="${Math.min(layout.width - 28, x + 6).toFixed(1)}" y="${layout.pad.top + 12}" font-size="${layout.fontSmall}" fill="#b91c1c">Now</text>`;
+}
+
+function renderChartTimeLabels(layout) {
+  return layout.labelHours.map(hour => {
+    const x = layout.getXForHour(hour);
+    return `<text x="${x.toFixed(1)}" y="${layout.height - 10}" text-anchor="middle" font-size="${layout.fontSmall}" fill="#64748b">${layout.getTimeLabelText(hour)}</text>`;
+  }).join('');
+}
+
+function renderTemperatureChart(periods, beach, selectedDate) {
+  if (!periods.length) {
+    temperatureChartEl.textContent = 'Temperature chart unavailable.';
+    return;
+  }
+
+  const layout = getDayChartLayout(selectedDate);
+  const temps = periods.map(period => period.temperature).filter(Number.isFinite);
+  const minTemp = Math.min(...temps);
+  const maxTemp = Math.max(...temps);
+  const spread = Math.max(4, maxTemp - minTemp);
+  const chartMin = Math.floor((minTemp - spread * 0.15) / 2) * 2;
+  const chartMax = Math.ceil((maxTemp + spread * 0.15) / 2) * 2;
+  const y = temp => layout.pad.top + layout.innerHeight - ((temp - chartMin) / Math.max(1, chartMax - chartMin)) * layout.innerHeight;
+  const highIndex = periods.findIndex(period => period.temperature === maxTemp);
+  const lowIndex = periods.findIndex(period => period.temperature === minTemp);
+  const yLabels = [chartMin, Math.round((chartMin + chartMax) / 2), chartMax];
+  const yGrid = yLabels.map(value => `
+    <line x1="${layout.pad.left}" y1="${y(value).toFixed(1)}" x2="${layout.width - layout.pad.right}" y2="${y(value).toFixed(1)}" stroke="#e2e8f0" stroke-width="1" />
+    <text x="${layout.pad.left - 10}" y="${(y(value) + 4).toFixed(1)}" text-anchor="end" font-size="${layout.fontSmall}" fill="#64748b">${value}°</text>
+  `).join('');
+  const linePath = periods.map((period, index) => `${index === 0 ? 'M' : 'L'} ${layout.getXForTime(period.startTime).toFixed(1)} ${y(period.temperature).toFixed(1)}`).join(' ');
+  const points = periods.map((period, index) => {
+    const cx = layout.getXForTime(period.startTime);
+    const cy = y(period.temperature);
+    const isHigh = index === highIndex;
+    const isLow = index === lowIndex;
+    return `
+      <g>
+        <title>${formatTimeNoSeconds(period.startTime)}, ${period.temperature}°F</title>
+        <circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${isHigh || isLow ? 3.2 : 2.2}" fill="${isHigh ? '#dc2626' : isLow ? '#2563eb' : '#0f766e'}" />
+      </g>
+    `;
+  }).join('');
+  const extremaLabels = periods.map((period, index) => {
+    if (index !== highIndex && index !== lowIndex) return '';
+    const cx = layout.getXForTime(period.startTime);
+    const cy = y(period.temperature);
+    const label = index === highIndex ? 'High' : 'Low';
+    const labelY = index === highIndex ? cy - 10 : cy + 14;
+    return `<text x="${cx.toFixed(1)}" y="${labelY.toFixed(1)}" text-anchor="middle" font-size="${layout.fontMedium}" font-weight="600" fill="${index === highIndex ? '#b91c1c' : '#1d4ed8'}">${label}</text>`;
+  }).join('');
+  const timeLabels = renderChartTimeLabels(layout);
+  const nowLine = renderChartNowLine(layout, selectedDate);
+  const aria = `Temperature chart for ${beach.displayName} on ${formatLongDate(selectedDate)} showing daytime hourly temperatures from 6 AM to 6 PM.`;
+
+  temperatureChartEl.innerHTML = `
+    <svg viewBox="0 0 ${layout.width} ${layout.height}" style="width:100%;height:auto;display:block;" role="img" aria-label="${aria}">
+      ${yGrid}
+      <path d="${linePath}" fill="none" stroke="#0f766e" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+      ${points}
+      ${extremaLabels}
+      ${nowLine}
+      ${timeLabels}
+    </svg>
+  `;
+}
+
+function renderPrecipitationChart(periods, beach, selectedDate) {
+  const numericPeriods = periods.filter(period => Number.isFinite(period.precipitationProbability));
+  if (!periods.length || !numericPeriods.length) {
+    precipitationChartEl.textContent = 'Precipitation chart unavailable.';
+    return;
+  }
+
+  const layout = getDayChartLayout(selectedDate);
+  const chartMax = 100;
+  const y = value => layout.pad.top + layout.innerHeight - (value / chartMax) * layout.innerHeight;
+  const yLabels = [0, 50, 100];
+  const yGrid = yLabels.map(value => `
+    <line x1="${layout.pad.left}" y1="${y(value).toFixed(1)}" x2="${layout.width - layout.pad.right}" y2="${y(value).toFixed(1)}" stroke="#e2e8f0" stroke-width="1" />
+    <text x="${layout.pad.left - 10}" y="${(y(value) + 4).toFixed(1)}" text-anchor="end" font-size="${layout.fontSmall}" fill="#64748b">${value}%</text>
+  `).join('');
+  const barWidth = layout.getBarWidth();
+  const bars = periods.map(period => {
+    if (!Number.isFinite(period.precipitationProbability)) return '';
+    const x = layout.getBarCenterForTime(period.startTime) - barWidth / 2;
+    const top = y(period.precipitationProbability);
+    const barHeight = layout.innerHeight - (top - layout.pad.top);
+    return `
+      <g>
+        <title>${formatTimeNoSeconds(period.startTime)}, ${period.precipitationProbability}% chance of precipitation</title>
+        <rect x="${x.toFixed(1)}" y="${top.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${barHeight.toFixed(1)}" rx="4" fill="#93c5fd" />
+      </g>
+    `;
+  }).join('');
+  const timeLabels = renderChartTimeLabels(layout);
+  const nowLine = renderChartNowLine(layout, selectedDate);
+  const aria = `Precipitation chart for ${beach.displayName} on ${formatLongDate(selectedDate)} showing daytime hourly precipitation chances from 6 AM to 6 PM.`;
+
+  precipitationChartEl.innerHTML = `
+    <svg viewBox="0 0 ${layout.width} ${layout.height}" style="width:100%;height:auto;display:block;" role="img" aria-label="${aria}">
+      ${yGrid}
+      ${bars}
+      ${nowLine}
+      ${timeLabels}
+    </svg>
+  `;
+}
+
 function renderWindChart(periods, beach, selectedDate) {
   if (!periods.length) {
     windSummaryEl.textContent = '';
@@ -960,18 +1180,17 @@ function renderWindChart(periods, beach, selectedDate) {
 
   // The chart is intentionally simple: one daytime bar per hour, a direction
   // arrow above each bar, and a highlight for the first strongest-wind hour.
-  const width = 640;
-  const height = 232;
-  const isPhone = window.innerWidth <= 600;
-  const fontSmall = isPhone ? 24 : 11;
-  const fontMedium = isPhone ? 18 : 10;
-  const pad = { top: 48, right: 12, bottom: 34, left: 34 };
+  const layout = getDayChartLayout(selectedDate);
+  const width = layout.width;
+  const height = layout.height;
+  const fontSmall = layout.fontSmall;
+  const fontMedium = layout.fontMedium;
+  const pad = { ...layout.pad, top: 48 };
   const maxSpeed = Math.max(...periods.map(period => period.speed));
   const chartMax = Math.max(10, Math.ceil(maxSpeed / 5) * 5);
   const innerWidth = width - pad.left - pad.right;
   const innerHeight = height - pad.top - pad.bottom;
-  const barWidth = innerWidth / periods.length;
-  const labelEvery = periods.length > 8 ? 2 : 1;
+  const barWidth = layout.getWindBarWidth();
   const maxIndex = periods.findIndex(period => period.speed === maxSpeed);
   const summary = getWindTrendSummary(periods);
   const peakPeriod = periods[maxIndex] || null;
@@ -982,20 +1201,17 @@ function renderWindChart(periods, beach, selectedDate) {
   const yLabels = [0, Math.round(chartMax / 2), chartMax];
   const yGrid = yLabels.map(value => `
     <line x1="${pad.left}" y1="${y(value).toFixed(1)}" x2="${width - pad.right}" y2="${y(value).toFixed(1)}" stroke="#e2e8f0" stroke-width="1" />
-    <text x="${pad.left - 6}" y="${(y(value) + 4).toFixed(1)}" text-anchor="end" font-size="${fontSmall}" fill="#64748b">${value}</text>
+    <text x="${pad.left - 10}" y="${(y(value) + 4).toFixed(1)}" text-anchor="end" font-size="${fontSmall}" fill="#64748b">${value}</text>
   `).join('');
 
   const bars = periods.map((period, index) => {
-    const x = pad.left + index * barWidth + barWidth * 0.15;
-    const w = barWidth * 0.7;
+    const x = layout.getBarCenterForTime(period.startTime) - barWidth / 2;
+    const w = barWidth;
     const top = y(period.speed);
     const barHeight = innerHeight - (top - pad.top);
     const fill = index === maxIndex ? '#3b82f6' : '#60a5fa';
     const arrow = Number.isFinite(period.directionDeg)
       ? renderWindArrow(x + w / 2, top - 14, period.directionDeg)
-      : '';
-    const label = index % labelEvery === 0
-      ? `<text x="${(x + w / 2).toFixed(1)}" y="${height - 10}" text-anchor="middle" font-size="${fontSmall}" fill="#64748b">${formatCompactHour(period.startTime)}</text>`
       : '';
     const peakLabel = index === maxIndex
       ? `<text x="${(x + w / 2).toFixed(1)}" y="${Math.max(14, top - 30).toFixed(1)}" text-anchor="middle" font-size="${fontMedium}" font-weight="600" fill="#1d4ed8">Peak</text>`
@@ -1008,7 +1224,6 @@ function renderWindChart(periods, beach, selectedDate) {
         <rect x="${x.toFixed(1)}" y="${top.toFixed(1)}" width="${w.toFixed(1)}" height="${barHeight.toFixed(1)}" rx="4" fill="${fill}" />
         ${peakLabel}
         ${arrow}
-        ${label}
       </g>
     `;
   }).join('');
@@ -1016,11 +1231,15 @@ function renderWindChart(periods, beach, selectedDate) {
   const chartAriaLabel = peakPeriod
     ? `${summary}. Daytime wind for ${beach.displayName} on ${formatLongDate(selectedDate)}. Peak wind ${peakPeriod.speed} mph around ${formatTimeNoSeconds(peakPeriod.startTime)}.`
     : `${summary}. Daytime wind for ${beach.displayName} on ${formatLongDate(selectedDate)}.`;
+  const timeLabels = renderChartTimeLabels({ ...layout, pad });
+  const nowLine = renderChartNowLine({ ...layout, pad }, selectedDate);
 
   windChartEl.innerHTML = `
     <svg viewBox="0 0 ${width} ${height}" style="width:100%;height:auto;display:block;" role="img" aria-label="${chartAriaLabel}">
       ${yGrid}
       ${bars}
+      ${nowLine}
+      ${timeLabels}
     </svg>
   `;
 }
@@ -1294,6 +1513,8 @@ async function loadWeather(beach, selectedDate) {
   const rangePeriods = getGridTemperaturePeriods(gridData?.properties?.temperature?.values, selectedDate);
   const gridWindPeriods = getGridWindPeriods(gridData?.properties?.windSpeed?.values, selectedDate);
   const gridDirectionPeriods = getGridWindDirectionPeriods(gridData?.properties?.windDirection?.values, selectedDate);
+  const temperatureChartPeriods = getTemperatureChartPeriods(rangePeriods, latestHourlyPeriods, selectedDate);
+  const precipitationChartPeriods = getPrecipitationChartPeriods(latestHourlyPeriods, selectedDate);
   const strongestWindSpeed = getStrongestDaytimeWindSpeed(gridWindPeriods, latestHourlyPeriods, selectedDate);
   latestRangePeriods = rangePeriods;
   latestStrongestDaytimeWindSpeed = strongestWindSpeed;
@@ -1302,6 +1523,8 @@ async function loadWeather(beach, selectedDate) {
     beach,
     selectedDate
   );
+  renderTemperatureChart(temperatureChartPeriods, beach, selectedDate);
+  renderPrecipitationChart(precipitationChartPeriods, beach, selectedDate);
   const summary = getSummaryPeriod(latestHourlyPeriods, selectedDate);
   if (!summary) {
     weatherCardTitleEl.textContent = isSameLocalDay(selectedDate, getAppNow()) ? 'Now' : 'Daytime';

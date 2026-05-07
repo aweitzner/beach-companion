@@ -158,6 +158,13 @@ select, .button {
   padding: 8px;
   min-height: 180px;
 }
+.day-chart {
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: #f8fafc;
+  padding: 8px;
+  min-height: 180px;
+}
 .wind-heading-row {
   display: flex;
   align-items: flex-start;
@@ -291,6 +298,10 @@ select, .button {
   }
 
   .wind-chart {
+    min-height: 0;
+  }
+
+  .day-chart {
     min-height: 0;
   }
 
