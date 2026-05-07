@@ -1,4 +1,4 @@
-const APP_VERSION = 'v1.5.25';
+const APP_VERSION = 'v1.5.26';
 const queryParams = new URLSearchParams(window.location.search);
 const TEST_MODE = queryParams.get('testMode') === '1';
 const TEST_MODE_CONFIG = Object.freeze({
@@ -91,6 +91,7 @@ const BEACHES = [
 ];
 
 const beachSelect = document.getElementById('beachSelect');
+const useLocationButtonEl = document.getElementById('useLocationButton');
 const daySelectorEl = document.getElementById('daySelector');
 const statusEl = document.getElementById('status');
 const weatherCardTitleEl = document.getElementById('weatherCardTitle');
@@ -128,6 +129,7 @@ let latestRangePeriods = [];
 let latestStrongestDaytimeWindSpeed = null;
 let activeDateKey = getLocalDateKey(getAppNow());
 let selectedDayKey = activeDateKey;
+let isLocatingBeach = false;
 
 // --- Helpers ---
 // These are small utilities the rest of the app leans on for wind logic,
@@ -476,6 +478,75 @@ function setSelectedDay(dateKey, { persist = true, reload = true } = {}) {
   if (reload) loadBeach();
 }
 
+function setUseLocationButtonState(isLoading) {
+  isLocatingBeach = isLoading;
+  if (!useLocationButtonEl) return;
+  useLocationButtonEl.disabled = isLoading;
+  useLocationButtonEl.textContent = isLoading ? 'Finding…' : 'Use My Location';
+}
+
+function getDistanceMiles(lat1, lon1, lat2, lon2) {
+  const toRad = value => (value * Math.PI) / 180;
+  const earthRadiusMiles = 3958.8;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return earthRadiusMiles * c;
+}
+
+function getNearestBeach(lat, lon) {
+  return BEACHES.reduce((closest, beach) => {
+    const distanceMiles = getDistanceMiles(lat, lon, beach.lat, beach.lon);
+    if (!closest || distanceMiles < closest.distanceMiles) {
+      return { beach, distanceMiles };
+    }
+    return closest;
+  }, null);
+}
+
+function handleUseMyLocation() {
+  if (!navigator.geolocation) {
+    statusEl.textContent = 'Location is not supported on this device.';
+    return;
+  }
+  if (isLocatingBeach) return;
+
+  setUseLocationButtonState(true);
+  statusEl.textContent = 'Finding your nearest beach…';
+
+  navigator.geolocation.getCurrentPosition(position => {
+    const nearest = getNearestBeach(position.coords.latitude, position.coords.longitude);
+    setUseLocationButtonState(false);
+
+    if (!nearest?.beach) {
+      statusEl.textContent = 'Could not determine the nearest beach.';
+      return;
+    }
+
+    beachSelect.value = nearest.beach.id;
+    localStorage.setItem(LAST_BEACH_KEY, nearest.beach.id);
+    statusEl.textContent = `Nearest beach: ${nearest.beach.displayName}`;
+    setSelectedDay(selectedDayKey, { persist: true, reload: true });
+  }, error => {
+    setUseLocationButtonState(false);
+
+    const message = error?.code === error.PERMISSION_DENIED
+      ? 'Location permission was denied.'
+      : error?.code === error.POSITION_UNAVAILABLE
+        ? 'Your location is currently unavailable.'
+        : error?.code === error.TIMEOUT
+          ? 'Location request timed out.'
+          : 'Could not determine your location.';
+    statusEl.textContent = message;
+  }, {
+    enableHighAccuracy: true,
+    timeout: 10000,
+    maximumAge: 300000
+  });
+}
+
 function init() {
   // Initial page setup: wire the selector UI, restore saved state,
   // then load the selected beach/day combination.
@@ -507,6 +578,8 @@ function init() {
     localStorage.setItem(LAST_BEACH_KEY, beachSelect.value);
     setSelectedDay(selectedDayKey, { persist: true, reload: true });
   });
+
+  useLocationButtonEl?.addEventListener('click', handleUseMyLocation);
 
   daySelectorEl.addEventListener('click', event => {
     const button = event.target.closest('.day-button');
