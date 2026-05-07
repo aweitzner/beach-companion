@@ -1,4 +1,4 @@
-const APP_VERSION = 'v1.5.26';
+const APP_VERSION = 'v1.5.28';
 const queryParams = new URLSearchParams(window.location.search);
 const TEST_MODE = queryParams.get('testMode') === '1';
 const TEST_MODE_CONFIG = Object.freeze({
@@ -482,7 +482,9 @@ function setUseLocationButtonState(isLoading) {
   isLocatingBeach = isLoading;
   if (!useLocationButtonEl) return;
   useLocationButtonEl.disabled = isLoading;
-  useLocationButtonEl.textContent = isLoading ? 'Finding…' : 'Use My Location';
+  useLocationButtonEl.textContent = '📍';
+  useLocationButtonEl.setAttribute('aria-label', isLoading ? 'Finding your location' : 'Use My Location');
+  useLocationButtonEl.setAttribute('title', isLoading ? 'Finding your location' : 'Use My Location');
 }
 
 function getDistanceMiles(lat1, lon1, lat2, lon2) {
