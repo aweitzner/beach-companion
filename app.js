@@ -1,4 +1,4 @@
-const APP_VERSION = 'v1.5.28';
+const APP_VERSION = 'v1.5.30';
 const queryParams = new URLSearchParams(window.location.search);
 const TEST_MODE = queryParams.get('testMode') === '1';
 const TEST_MODE_CONFIG = Object.freeze({
@@ -54,7 +54,11 @@ const BEACHES = [
     lat: 40.4668,
     lon: -74.0093,
     tideStationId: '8531680',
-    waterTempStationId: '8531680'
+    waterTempSource: Object.freeze({
+      provider: 'coops',
+      stationId: '8531680',
+      label: 'NOAA Sandy Hook'
+    })
   },
   {
     id: 'belmar',
@@ -62,7 +66,24 @@ const BEACHES = [
     lat: 40.1784,
     lon: -74.0210,
     tideStationId: '8532337',
-    waterTempStationId: '8532337'
+    waterTempSource: Object.freeze({
+      provider: 'safeBeachDay',
+      label: 'NOAA buoy near Barnegat',
+      latitude: 40.1784,
+      longitude: -74.0210,
+      noaaTidesStation: '8532337',
+      ndbcBuoyId: '44091',
+      agencyTz: 'America/New_York'
+    }),
+    altWaterTempSource: Object.freeze({
+      provider: 'safeBeachDay',
+      label: 'Surfline Belmar',
+      latitude: 40.170845,
+      longitude: -74.015079,
+      noaaTidesStation: '8532337',
+      surflineSpotId: '5842041f4e65fad6a7708a01',
+      agencyTz: 'America/New_York'
+    })
   },
   {
     id: 'asbury_park',
@@ -70,7 +91,11 @@ const BEACHES = [
     lat: 40.2204,
     lon: -73.9982,
     tideStationId: '8532337',
-    waterTempStationId: '8532337'
+    waterTempSource: Object.freeze({
+      provider: 'coops',
+      stationId: '8532337',
+      label: 'NOAA Shark River'
+    })
   },
   {
     id: 'cape_may',
@@ -78,7 +103,11 @@ const BEACHES = [
     lat: 38.9351,
     lon: -74.9060,
     tideStationId: '8536110',
-    waterTempStationId: '8536110'
+    waterTempSource: Object.freeze({
+      provider: 'coops',
+      stationId: '8536110',
+      label: 'NOAA Cape May'
+    })
   },
   {
     id: 'bar_harbor',
@@ -86,7 +115,11 @@ const BEACHES = [
     lat: 44.3876,
     lon: -68.2039,
     tideStationId: '8413320',
-    waterTempStationId: '8413320'
+    waterTempSource: Object.freeze({
+      provider: 'coops',
+      stationId: '8413320',
+      label: 'NOAA Bar Harbor'
+    })
   }
 ];
 
@@ -744,7 +777,7 @@ async function loadBeach() {
   const results = await Promise.allSettled([
     loadWeather(beach, selectedDate),
     loadTides(beach, selectedDate),
-    loadWaterTemp(beach),
+    loadWaterTemp(beach, selectedDate),
     loadAlerts(beach)
   ]);
 
@@ -2109,38 +2142,157 @@ function ripCurrentNote(alerts) {
   return null;
 }
 
-async function loadWaterTemp(beach) {
-  const stationIds = getWaterTempStationCandidates(beach);
-  let lastError = null;
-
-  for (const stationId of stationIds) {
-    try {
-      const url = `https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?product=water_temperature&application=beach-app&station=${stationId}&date=latest&units=english&time_zone=lst_ldt&format=json`;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error('Water temp failed');
-      const data = await res.json();
-      const reading = data.data?.[0];
-      if (!reading?.v) throw new Error('No water temp in feed');
-
-      waterTempEl.textContent = `${reading.v}°F`;
-      waterUpdatedEl.textContent = `NOAA station ${stationId} at ${formatDateTime(reading.t)}`;
-      return;
-    } catch (error) {
-      lastError = error;
-    }
+async function loadWaterTemp(beach, selectedDate = getAppNow()) {
+  if (!isSameLocalDay(selectedDate, getAppNow())) {
+    waterTempEl.textContent = '--';
+    waterUpdatedEl.textContent = 'Water temp is only available for today.';
+    return;
   }
 
-  throw lastError || new Error('Water temp failed');
+  const reading = await fetchWaterTempSource(beach.waterTempSource);
+  waterTempEl.textContent = `${reading.temperature}°F`;
+
+  const altReading = await fetchAltWaterTempSource(beach.altWaterTempSource);
+  waterUpdatedEl.innerHTML = [
+    escapeHtml(reading.label),
+    altReading ? `Alt: ${escapeHtml(altReading.label)} ${escapeHtml(altReading.temperature)}°F` : null
+  ].filter(Boolean).join('<br>');
 }
 
-function getWaterTempStationCandidates(beach) {
-  const candidates = [beach.waterTempStationId];
+async function fetchWaterTempSource(source) {
+  if (!source) throw new Error('Water temp source missing');
 
-  if (beach?.id === 'belmar' || beach?.id === 'asbury_park') {
-    candidates.push('8531680');
+  if (source.provider === 'coops') {
+    return fetchCoopsWaterTemp(source);
   }
 
-  return [...new Set(candidates)];
+  if (source.provider === 'ndbc') {
+    return fetchNdbcWaterTemp(source);
+  }
+
+  if (source.provider === 'safeBeachDay') {
+    return fetchSafeBeachDayWaterTemp(source);
+  }
+
+  throw new Error(`Unsupported water temp provider: ${source.provider}`);
+}
+
+async function fetchCoopsWaterTemp(source) {
+  const url = `https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?product=water_temperature&application=beach-app&station=${source.stationId}&date=latest&units=english&time_zone=lst_ldt&format=json`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('Water temp failed');
+  const data = await res.json();
+  const reading = data.data?.[0];
+  if (!reading?.v) throw new Error('No water temp in feed');
+  const temperature = Number.parseFloat(reading.v);
+  if (!Number.isFinite(temperature)) throw new Error('Invalid water temp in feed');
+
+  return {
+    temperature: Math.round(temperature),
+    label: source.label || `NOAA station ${source.stationId}`,
+    time: reading.t
+  };
+}
+
+async function fetchNdbcWaterTemp(source) {
+  const url = `https://www.ndbc.noaa.gov/data/realtime2/${source.stationId}.txt`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('Water temp failed');
+  const text = await res.text();
+  const reading = parseNdbcWaterTemp(text);
+  if (!reading) throw new Error('No water temp in buoy feed');
+
+  return {
+    temperature: Math.round(convertCelsiusToFahrenheit(reading.temperatureC)),
+    label: source.label || `NOAA buoy ${source.stationId}`,
+    time: reading.time
+  };
+}
+
+function parseNdbcWaterTemp(text) {
+  const lines = text.split('\n').map(line => line.trim()).filter(Boolean);
+  const headerLine = lines.find(line => line.startsWith('#YY') || line.startsWith('#yr'));
+  if (!headerLine) return null;
+
+  const columns = headerLine.replace(/^#/, '').trim().split(/\s+/);
+  const waterTempIndex = columns.indexOf('WTMP');
+  if (waterTempIndex < 0) return null;
+
+  for (const line of lines) {
+    if (line.startsWith('#')) continue;
+    const values = line.split(/\s+/);
+    const temperatureC = Number.parseFloat(values[waterTempIndex]);
+    if (!Number.isFinite(temperatureC)) continue;
+
+    const year = Number.parseInt(values[0], 10);
+    const month = Number.parseInt(values[1], 10);
+    const day = Number.parseInt(values[2], 10);
+    const hour = Number.parseInt(values[3], 10);
+    const minute = Number.parseInt(values[4], 10);
+
+    return {
+      temperatureC,
+      time: new Date(Date.UTC(year, month - 1, day, hour, minute)).toISOString()
+    };
+  }
+
+  return null;
+}
+
+async function fetchAltWaterTempSource(source) {
+  if (!source) return null;
+
+  try {
+    if (source.provider === 'safeBeachDay') {
+      return await fetchSafeBeachDayWaterTemp(source);
+    }
+  } catch (error) {
+    console.warn('Alt water temp failed', error);
+  }
+
+  return null;
+}
+
+async function fetchSafeBeachDayWaterTemp(source) {
+  const res = await fetch('https://api-yourwatchtower.graphcdn.app/', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      query: 'query GetWeatherData($weatherInput: [WeatherInput!]!) { getWeatherData(weatherInput: $weatherInput) }',
+      variables: {
+        weatherInput: [{
+          useMeters: false,
+          useCelsius: false,
+          surflineSpotId: source.surflineSpotId,
+          ndbcBuoyId: source.ndbcBuoyId,
+          noaaTidesStation: source.noaaTidesStation,
+          agencyTz: source.agencyTz,
+          latitude: source.latitude,
+          longitude: source.longitude
+        }]
+      }
+    })
+  });
+
+  if (!res.ok) throw new Error('Alt water temp failed');
+  const data = await res.json();
+  const reading = data.data?.getWeatherData?.[0]?.waterTemperature;
+  const value = Number.parseFloat(reading?.value);
+  if (!Number.isFinite(value)) throw new Error('No alt water temp in feed');
+
+  return {
+    temperature: Math.round(value),
+    label: source.label || 'Surfline'
+  };
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
 }
 
 function renderTideChart(points, beach, selectedDate) {
