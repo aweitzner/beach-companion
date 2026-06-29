@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="Azores Beach" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="theme-color" content="#1e5f74" />
+  <title>Azores Beach Companion</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="icon-180.png" />
+  <link rel="stylesheet" href="style.css?v=1.0.6" />
+</head>
+<body>
+  <main class="app">
+    <header class="header">
+      <div>
+        <p class="eyebrow">European Edition</p>
+        <h1>Azores Beach Companion</h1>
+        <p class="subhead">Regional weather and sea conditions for Sao Miguel</p>
+      </div>
+      <div class="header-controls">
+        <div class="unit-toggle" aria-label="Units">
+          <button id="metricButton" type="button" class="unit-button">Metric</button>
+          <button id="imperialButton" type="button" class="unit-button">Imperial</button>
+        </div>
+        <select id="locationSelect" aria-label="Location"></select>
+      </div>
+    </header>
+
+    <p id="status" class="status header-status">Loading…</p>
+
+    <section class="day-strip" aria-label="Day selector">
+      <div id="daySelector" class="day-selector"></div>
+    </section>
+
+    <section class="card notes-card">
+      <h2>Regional Notes</h2>
+      <ul id="notesList">
+        <li>Loading regional note…</li>
+      </ul>
+    </section>
+
+    <section class="grid">
+      <article class="card">
+        <h2 id="weatherCardTitle">Now</h2>
+        <div class="metric-row">
+          <div>
+            <div id="airLabel" class="label">Air</div>
+            <div id="airTemp" class="value">--</div>
+          </div>
+          <div>
+            <div id="windLabel" class="label">Wind</div>
+            <div id="wind" class="value">--</div>
+          </div>
+        </div>
+        <div id="weatherFeels" class="updated"></div>
+        <div id="weatherRange" class="updated"></div>
+        <div id="weatherUpdated" class="updated"></div>
+      </article>
+
+      <article class="card">
+        <h2>Sea State</h2>
+        <div class="sea-grid">
+          <div class="sea-metric">
+            <div class="label">Sea Temp</div>
+            <div id="seaTemp" class="value value-compact">--</div>
+          </div>
+          <div class="sea-metric">
+            <div class="label">Wave Height</div>
+            <div id="waveHeight" class="value value-compact">--</div>
+          </div>
+          <div class="sea-metric">
+            <div class="label">Wave Direction</div>
+            <div id="waveDirection" class="value value-compact">--</div>
+          </div>
+          <div class="sea-metric">
+            <div class="label">Wave Period</div>
+            <div id="wavePeriod" class="value value-compact">--</div>
+          </div>
+        </div>
+        <div id="seaUpdated" class="updated"></div>
+      </article>
+    </section>
+
+    <section class="card">
+      <h2>Sun & Moon</h2>
+      <div class="astro-list">
+        <div class="astro-item"><span>Sunrise</span><span id="sunriseTime">--</span></div>
+        <div class="astro-item"><span>Sunset</span><span id="sunsetTime">--</span></div>
+        <div class="astro-item"><span>Moonrise</span><span id="moonriseTime">--</span></div>
+        <div class="astro-item"><span>Moonset</span><span id="moonsetTime">--</span></div>
+      </div>
+      <div id="moonPhase" class="updated"></div>
+    </section>
+
+    <section class="card">
+      <h2 id="tidesTitle">Tide Outlook</h2>
+      <div id="nextTide" class="next-tide">--</div>
+      <div id="tideList" class="tide-list"></div>
+      <div id="tideDisclaimer" class="updated">
+        Model-based tide signal from Open-Meteo sea level height. Coastal accuracy is limited.
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Wind</h2>
+      <div id="windSummary" class="updated wind-summary"></div>
+      <div id="windChart" class="day-chart">Wind chart unavailable.</div>
+    </section>
+
+    <section class="card">
+      <h2>Temperature</h2>
+      <div id="temperatureChart" class="day-chart">Temperature chart unavailable.</div>
+    </section>
+
+    <section class="card">
+      <h2>Precipitation</h2>
+      <div id="precipitationChart" class="day-chart">Precipitation chart unavailable.</div>
+    </section>
+  </main>
+
+  <script src="astronomy.browser.min.js?v=1.4.14"></script>
+  <script src="app.js?v=1.0.16"></script>
+</body>
+</html>
