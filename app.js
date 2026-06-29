@@ -1,4 +1,4 @@
-const APP_VERSION = 'v1.5.30';
+const APP_VERSION = 'v1.5.31';
 const queryParams = new URLSearchParams(window.location.search);
 const TEST_MODE = queryParams.get('testMode') === '1';
 const TEST_MODE_CONFIG = Object.freeze({
@@ -453,7 +453,7 @@ function buildBeachNotes(data) {
     windShiftNote(data.hourly),
     precipitation,
     sealNote(data.beach, data.current, precipitation, data.date),
-    clothingNote(data.date, data.range, data.strongestWindSpeed),
+    clothingNote(data.date, data.range, data.strongestWindSpeed, data.hourly),
     fullMoonRiseNote(data.astronomy)
   ]
     .filter(Boolean)
@@ -1505,10 +1505,10 @@ function renderWindArrow(cx, cy, directionDeg) {
   `;
 }
 
-function getClothingRecommendation(selectedDate, range, strongestWindSpeed) {
+function getClothingRecommendation(selectedDate, range, strongestWindSpeed, hourlyPeriods = []) {
   // Clothing is treated as an action-oriented Beach Note, not a core condition.
-  // The rules are deterministic and conservative: start from daytime high,
-  // then get colder if the low or strongest daytime wind suggest it.
+  // Summer beach advice weighs humidity and wind together so warm sticky days
+  // do not get over-cooled by a routine sea breeze.
   if (!range) return null;
 
   const high = range.high.temperature;
@@ -1517,6 +1517,7 @@ function getClothingRecommendation(selectedDate, range, strongestWindSpeed) {
   if (!Number.isFinite(high) || !Number.isFinite(low)) return null;
 
   const beachMode = isBeachMode(selectedDate);
+  const dewPoint = getRepresentativeDaytimeDewPoint(hourlyPeriods, selectedDate);
   const labels = beachMode
     ? ['You’ll be good in a T-shirt', 'You may want a long sleeve', 'Bring a sweatshirt', 'Bring layers if you’re staying late']
     : ['You’ll be fine with a light layer', 'Bring a sweatshirt', 'You’ll want a coat', 'Bundle up out there'];
@@ -1524,13 +1525,27 @@ function getClothingRecommendation(selectedDate, range, strongestWindSpeed) {
   let level;
 
   if (beachMode) {
-    if (high >= 80) level = 0;
-    else if (high >= 70) level = 1;
-    else if (high >= 60) level = 2;
+    if (high >= 78) level = 0;
+    else if (high >= 68) level = 1;
+    else if (high >= 58) level = 2;
     else level = 3;
+
+    if (Number.isFinite(dewPoint)) {
+      if (dewPoint >= 68 && high >= 72) level = 0;
+      else if (dewPoint >= 62 && high >= 74) level = Math.min(level, 1);
+    }
 
     if (low < 50) level = 3;
     else if (low < 60) level = Math.max(level, 2);
+
+    if (Number.isFinite(strongestWindSpeed)) {
+      const isHumid = Number.isFinite(dewPoint) && dewPoint >= 62;
+      if (strongestWindSpeed >= 22 && high < 82 && !isHumid) {
+        level += 1;
+      } else if (strongestWindSpeed >= 15 && high < 72) {
+        level += 1;
+      }
+    }
   } else {
     if (high >= 65) level = 0;
     else if (high >= 55) level = 1;
@@ -1540,18 +1555,28 @@ function getClothingRecommendation(selectedDate, range, strongestWindSpeed) {
     if (low < 32) level = 3;
     else if (low < 40) level = Math.max(level, 2);
     else if (low < 50) level = Math.max(level, 1);
-  }
 
-  if (Number.isFinite(strongestWindSpeed) && strongestWindSpeed >= 15) {
-    level += 1;
+    if (Number.isFinite(strongestWindSpeed) && strongestWindSpeed >= 15) {
+      level += 1;
+    }
   }
 
   level = Math.max(0, Math.min(level, labels.length - 1));
   return labels[level];
 }
 
-function clothingNote(selectedDate, range, strongestWindSpeed) {
-  const clothing = getClothingRecommendation(selectedDate, range, strongestWindSpeed);
+function getRepresentativeDaytimeDewPoint(periods, selectedDate) {
+  const values = getForecastPeriodsForDate(periods, selectedDate)
+    .filter(period => isDaytimeForecastHour(period.startTime, selectedDate))
+    .map(getDewPointFahrenheit)
+    .filter(Number.isFinite);
+
+  if (!values.length) return null;
+  return Math.max(...values);
+}
+
+function clothingNote(selectedDate, range, strongestWindSpeed, hourlyPeriods = []) {
+  const clothing = getClothingRecommendation(selectedDate, range, strongestWindSpeed, hourlyPeriods);
   if (!clothing) return null;
 
   return {
