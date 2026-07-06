@@ -1,4 +1,4 @@
-const APP_VERSION = 'v1.5.34';
+const APP_VERSION = 'v1.5.35';
 const queryParams = new URLSearchParams(window.location.search);
 const TEST_MODE = queryParams.get('testMode') === '1';
 const TEST_MODE_CONFIG = Object.freeze({
@@ -148,6 +148,9 @@ const radarMapEl = document.getElementById('radarMap');
 const radarImageEl = document.getElementById('radarImage');
 const radarMarkerEl = document.getElementById('radarMarker');
 const radarStatusEl = document.getElementById('radarStatus');
+const radarControlsEl = document.getElementById('radarControls');
+const radarToggleEl = document.getElementById('radarToggle');
+const radarTimeEl = document.getElementById('radarTime');
 const radarUpdatedEl = document.getElementById('radarUpdated');
 const windCardEl = windChartEl.closest('.card');
 const windHeadingEl = windCardEl?.querySelector('h2');
@@ -168,6 +171,11 @@ let latestStrongestDaytimeWindSpeed = null;
 let activeDateKey = getLocalDateKey(getAppNow());
 let selectedDayKey = activeDateKey;
 let isLocatingBeach = false;
+let radarAnimationTimer = null;
+let radarFrameData = [];
+let radarFrameIndex = 0;
+let radarAnimationToken = 0;
+let radarIsPaused = false;
 
 // --- Helpers ---
 // These are small utilities the rest of the app leans on for wind logic,
@@ -620,6 +628,7 @@ function init() {
   });
 
   useLocationButtonEl?.addEventListener('click', handleUseMyLocation);
+  radarToggleEl?.addEventListener('click', toggleRadarAnimation);
 
   daySelectorEl.addEventListener('click', event => {
     const button = event.target.closest('.day-button');
@@ -2033,12 +2042,16 @@ async function loadAlerts(beach) {
 function renderRadar(beach) {
   if (!radarImageEl || !radarStatusEl) return;
 
+  const token = ++radarAnimationToken;
+  resetRadarAnimation();
   if (radarMapEl) radarMapEl.innerHTML = buildRadarMapTiles(beach);
   radarImageEl.hidden = true;
   if (radarMarkerEl) radarMarkerEl.hidden = true;
   radarStatusEl.hidden = false;
   radarStatusEl.textContent = 'Radar unavailable.';
   if (radarUpdatedEl) radarUpdatedEl.textContent = '';
+  if (radarControlsEl) radarControlsEl.hidden = true;
+  if (radarTimeEl) radarTimeEl.textContent = '';
 
   radarImageEl.onload = () => {
     radarImageEl.hidden = false;
@@ -2056,9 +2069,119 @@ function renderRadar(beach) {
   };
 
   radarImageEl.src = buildRadarImageUrl(beach);
+  loadRadarAnimation(beach, token);
 }
 
-function buildRadarImageUrl(beach) {
+async function loadRadarAnimation(beach, token) {
+  try {
+    const frameTimes = await fetchRadarFrameTimes();
+    if (token !== radarAnimationToken) return;
+
+    const recentTimes = frameTimes.slice(-8);
+    const frames = await preloadRadarFrames(recentTimes.map(time => ({
+      time,
+      url: buildRadarImageUrl(beach, time)
+    })));
+    if (token !== radarAnimationToken || frames.length < 2) return;
+
+    radarFrameData = frames;
+    radarFrameIndex = 0;
+    radarIsPaused = false;
+    if (radarControlsEl) radarControlsEl.hidden = false;
+    if (radarToggleEl) radarToggleEl.textContent = 'Pause';
+    showRadarFrame(0);
+    startRadarAnimation();
+  } catch (error) {
+    console.warn('Radar animation unavailable', error);
+  }
+}
+
+async function fetchRadarFrameTimes() {
+  const url = 'https://opengeo.ncep.noaa.gov/geoserver/conus/conus_bref_qcd/ows?service=wms&version=1.3.0&request=GetCapabilities';
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('Radar capabilities failed');
+  const text = await res.text();
+  const doc = new DOMParser().parseFromString(text, 'application/xml');
+  const timeDimension = [...doc.getElementsByTagName('Dimension')]
+    .find(dimension => dimension.getAttribute('name') === 'time');
+  const times = (timeDimension?.textContent || '')
+    .split(',')
+    .map(value => value.trim())
+    .filter(value => !Number.isNaN(new Date(value).getTime()));
+
+  if (times.length < 2) throw new Error('Radar frame times unavailable');
+  return times;
+}
+
+async function preloadRadarFrames(frames) {
+  const results = await Promise.allSettled(frames.map(frame => preloadImage(frame)));
+  return results
+    .filter(result => result.status === 'fulfilled')
+    .map(result => result.value);
+}
+
+function preloadImage(frame) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(frame);
+    image.onerror = () => reject(new Error('Radar frame failed'));
+    image.src = frame.url;
+  });
+}
+
+function startRadarAnimation() {
+  stopRadarAnimation();
+  if (radarIsPaused || radarFrameData.length < 2) return;
+
+  radarAnimationTimer = window.setInterval(() => {
+    showRadarFrame((radarFrameIndex + 1) % radarFrameData.length);
+  }, 700);
+}
+
+function stopRadarAnimation() {
+  if (radarAnimationTimer) {
+    window.clearInterval(radarAnimationTimer);
+    radarAnimationTimer = null;
+  }
+}
+
+function resetRadarAnimation() {
+  stopRadarAnimation();
+  radarFrameData = [];
+  radarFrameIndex = 0;
+  radarIsPaused = false;
+}
+
+function showRadarFrame(index) {
+  if (!radarFrameData.length) return;
+
+  radarFrameIndex = index;
+  const frame = radarFrameData[radarFrameIndex];
+  radarImageEl.src = frame.url;
+  if (radarTimeEl) radarTimeEl.textContent = formatRadarFrameTime(frame.time);
+}
+
+function toggleRadarAnimation() {
+  if (radarFrameData.length < 2) return;
+
+  radarIsPaused = !radarIsPaused;
+  if (radarToggleEl) radarToggleEl.textContent = radarIsPaused ? 'Loop' : 'Pause';
+
+  if (radarIsPaused) {
+    stopRadarAnimation();
+  } else {
+    startRadarAnimation();
+  }
+}
+
+function formatRadarFrameTime(value) {
+  return new Date(value).toLocaleTimeString([], {
+    hour: 'numeric',
+    minute: '2-digit'
+  });
+}
+
+function buildRadarImageUrl(beach, time = null) {
   const viewport = getRadarViewport(beach);
   const bbox = [
     viewport.minX,
@@ -2081,6 +2204,7 @@ function buildRadarImageUrl(beach) {
     transparent: 'true',
     cache: String(cacheBucket)
   });
+  if (time) params.set('time', time);
 
   return `https://opengeo.ncep.noaa.gov/geoserver/conus/conus_bref_qcd/ows?${params}`;
 }

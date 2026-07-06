@@ -246,6 +246,30 @@ select, .button {
 .radar-status[hidden] {
   display: none;
 }
+.radar-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+.radar-controls[hidden] {
+  display: none;
+}
+.radar-toggle {
+  appearance: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #f8fafc;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.88rem;
+  padding: 6px 12px;
+}
+.radar-time {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
 .wind-heading-row {
   display: flex;
   align-items: flex-start;
