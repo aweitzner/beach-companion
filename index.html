@@ -10,7 +10,7 @@
   <title>Beach Companion</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="icon-180.png" />
-  <link rel="stylesheet" href="style.css?v=1.5.31" />
+  <link rel="stylesheet" href="style.css?v=1.5.34" />
 </head>
 <body>
   <main class="app">
@@ -96,9 +96,21 @@
       <h2>Precipitation</h2>
       <div id="precipitationChart" class="day-chart">Precipitation chart unavailable.</div>
     </section>
+
+    <section class="card">
+      <h2>Radar</h2>
+      <div id="radarFrame" class="radar-frame">
+        <div id="radarMap" class="radar-map" aria-hidden="true"></div>
+        <img id="radarImage" class="radar-image" alt="NOAA/NWS radar centered near the selected beach" hidden />
+        <div id="radarMarker" class="radar-marker" aria-hidden="true" hidden></div>
+        <div class="radar-attribution">Map © OpenStreetMap contributors · Radar NOAA/NWS</div>
+        <div id="radarStatus" class="radar-status">Radar unavailable.</div>
+      </div>
+      <div id="radarUpdated" class="updated"></div>
+    </section>
   </main>
 
-  <script src="astronomy.browser.min.js?v=1.5.31"></script>
-  <script src="app.js?v=1.5.31"></script>
+  <script src="astronomy.browser.min.js?v=1.5.34"></script>
+  <script src="app.js?v=1.5.34"></script>
 </body>
 </html>

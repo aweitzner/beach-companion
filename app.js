@@ -1,4 +1,4 @@
-const APP_VERSION = 'v1.5.31';
+const APP_VERSION = 'v1.5.34';
 const queryParams = new URLSearchParams(window.location.search);
 const TEST_MODE = queryParams.get('testMode') === '1';
 const TEST_MODE_CONFIG = Object.freeze({
@@ -144,6 +144,11 @@ const moonsetTimeEl = document.getElementById('moonsetTime');
 const windChartEl = document.getElementById('windChart');
 const temperatureChartEl = document.getElementById('temperatureChart');
 const precipitationChartEl = document.getElementById('precipitationChart');
+const radarMapEl = document.getElementById('radarMap');
+const radarImageEl = document.getElementById('radarImage');
+const radarMarkerEl = document.getElementById('radarMarker');
+const radarStatusEl = document.getElementById('radarStatus');
+const radarUpdatedEl = document.getElementById('radarUpdated');
 const windCardEl = windChartEl.closest('.card');
 const windHeadingEl = windCardEl?.querySelector('h2');
 const windSummaryEl = ensureWindSummaryEl();
@@ -773,6 +778,7 @@ async function loadBeach() {
     : `Tides ${formatShortDate(selectedDate)}`;
   latestAstronomy = calculateAstronomy(beach, selectedDate);
   renderAstronomy(latestAstronomy);
+  renderRadar(beach);
 
   const results = await Promise.allSettled([
     loadWeather(beach, selectedDate),
@@ -2022,6 +2028,137 @@ async function loadAlerts(beach) {
     console.error("Alerts fetch failed", err);
     latestAlerts = [];
   }
+}
+
+function renderRadar(beach) {
+  if (!radarImageEl || !radarStatusEl) return;
+
+  if (radarMapEl) radarMapEl.innerHTML = buildRadarMapTiles(beach);
+  radarImageEl.hidden = true;
+  if (radarMarkerEl) radarMarkerEl.hidden = true;
+  radarStatusEl.hidden = false;
+  radarStatusEl.textContent = 'Radar unavailable.';
+  if (radarUpdatedEl) radarUpdatedEl.textContent = '';
+
+  radarImageEl.onload = () => {
+    radarImageEl.hidden = false;
+    if (radarMarkerEl) radarMarkerEl.hidden = false;
+    radarStatusEl.hidden = true;
+    if (radarUpdatedEl) radarUpdatedEl.textContent = `NOAA/NWS radar centered on ${beach.displayName}`;
+  };
+
+  radarImageEl.onerror = () => {
+    radarImageEl.hidden = true;
+    if (radarMarkerEl) radarMarkerEl.hidden = true;
+    radarStatusEl.hidden = false;
+    radarStatusEl.textContent = 'Radar unavailable.';
+    if (radarUpdatedEl) radarUpdatedEl.textContent = '';
+  };
+
+  radarImageEl.src = buildRadarImageUrl(beach);
+}
+
+function buildRadarImageUrl(beach) {
+  const viewport = getRadarViewport(beach);
+  const bbox = [
+    viewport.minX,
+    viewport.minY,
+    viewport.maxX,
+    viewport.maxY
+  ].map(value => value.toFixed(2)).join(',');
+  const cacheBucket = Math.floor(getAppNow().getTime() / (5 * 60 * 1000));
+  const params = new URLSearchParams({
+    service: 'WMS',
+    version: '1.3.0',
+    request: 'GetMap',
+    layers: 'conus_bref_qcd',
+    styles: 'radar_reflectivity',
+    crs: 'EPSG:3857',
+    bbox,
+    width: '800',
+    height: '450',
+    format: 'image/png',
+    transparent: 'true',
+    cache: String(cacheBucket)
+  });
+
+  return `https://opengeo.ncep.noaa.gov/geoserver/conus/conus_bref_qcd/ows?${params}`;
+}
+
+function buildRadarMapTiles(beach) {
+  const viewport = getRadarViewport(beach);
+  const tileSize = viewport.tileSize;
+  const minTileX = Math.floor(viewport.pixelMinX / tileSize);
+  const maxTileX = Math.floor((viewport.pixelMinX + viewport.width - 1) / tileSize);
+  const minTileY = Math.floor(viewport.pixelMinY / tileSize);
+  const maxTileY = Math.floor((viewport.pixelMinY + viewport.height - 1) / tileSize);
+  const maxTile = (2 ** viewport.zoom) - 1;
+  const tiles = [];
+
+  for (let x = minTileX; x <= maxTileX; x += 1) {
+    for (let y = minTileY; y <= maxTileY; y += 1) {
+      if (y < 0 || y > maxTile) continue;
+      const wrappedX = ((x % (maxTile + 1)) + (maxTile + 1)) % (maxTile + 1);
+      const left = Math.round((x * tileSize) - viewport.pixelMinX);
+      const top = Math.round((y * tileSize) - viewport.pixelMinY);
+      const style = [
+        `left:${((left / viewport.width) * 100).toFixed(3)}%`,
+        `top:${((top / viewport.height) * 100).toFixed(3)}%`,
+        `width:${((tileSize / viewport.width) * 100).toFixed(3)}%`,
+        `height:${((tileSize / viewport.height) * 100).toFixed(3)}%`
+      ].join(';');
+      tiles.push(`<img class="radar-map-tile" alt="" src="https://tile.openstreetmap.org/${viewport.zoom}/${wrappedX}/${y}.png" style="${style}" loading="lazy" />`);
+    }
+  }
+
+  return tiles.join('');
+}
+
+function getRadarViewport(beach) {
+  const zoom = 9;
+  const width = 800;
+  const height = 450;
+  const tileSize = 256;
+  const centerPixel = lonLatToWorldPixel(beach.lon, beach.lat, zoom, tileSize);
+  const pixelMinX = centerPixel.x - (width / 2);
+  const pixelMinY = centerPixel.y - (height / 2);
+  const minMeters = worldPixelToWebMercator(pixelMinX, pixelMinY + height, zoom, tileSize);
+  const maxMeters = worldPixelToWebMercator(pixelMinX + width, pixelMinY, zoom, tileSize);
+
+  return {
+    zoom,
+    width,
+    height,
+    tileSize,
+    pixelMinX,
+    pixelMinY,
+    minX: minMeters.x,
+    minY: minMeters.y,
+    maxX: maxMeters.x,
+    maxY: maxMeters.y
+  };
+}
+
+function lonLatToWorldPixel(lon, lat, zoom, tileSize) {
+  const sinLat = Math.sin((Math.max(-85.05112878, Math.min(85.05112878, lat)) * Math.PI) / 180);
+  const scale = tileSize * (2 ** zoom);
+
+  return {
+    x: ((lon + 180) / 360) * scale,
+    y: (0.5 - (Math.log((1 + sinLat) / (1 - sinLat)) / (4 * Math.PI))) * scale
+  };
+}
+
+function worldPixelToWebMercator(pixelX, pixelY, zoom, tileSize) {
+  const scale = tileSize * (2 ** zoom);
+  const lon = (pixelX / scale) * 360 - 180;
+  const n = Math.PI - (2 * Math.PI * pixelY) / scale;
+  const lat = (180 / Math.PI) * Math.atan(Math.sinh(n));
+  const earthRadius = 6378137;
+  const x = earthRadius * lon * Math.PI / 180;
+  const y = earthRadius * Math.log(Math.tan((Math.PI / 4) + ((lat * Math.PI / 180) / 2)));
+
+  return { x, y };
 }
 
 
