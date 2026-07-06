@@ -1,4 +1,4 @@
-const APP_VERSION = 'v1.5.35';
+const APP_VERSION = 'v1.5.36';
 const queryParams = new URLSearchParams(window.location.search);
 const TEST_MODE = queryParams.get('testMode') === '1';
 const TEST_MODE_CONFIG = Object.freeze({
@@ -119,6 +119,30 @@ const BEACHES = [
       provider: 'coops',
       stationId: '8413320',
       label: 'NOAA Bar Harbor'
+    })
+  },
+  {
+    id: 'kennebunkport',
+    displayName: 'Kennebunkport, ME',
+    lat: 43.3950,
+    lon: -70.4221,
+    tideStationId: '8418150',
+    waterTempSource: Object.freeze({
+      provider: 'coops',
+      stationId: '8418150',
+      label: 'NOAA Portland'
+    })
+  },
+  {
+    id: 'lewes',
+    displayName: 'Lewes, DE',
+    lat: 38.7854,
+    lon: -75.1482,
+    tideStationId: '8557380',
+    waterTempSource: Object.freeze({
+      provider: 'coops',
+      stationId: '8557380',
+      label: 'NOAA Lewes'
     })
   }
 ];
