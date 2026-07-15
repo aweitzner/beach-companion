@@ -1,0 +1,8 @@
+{
+  "scripts": {
+    "deploy:maine-water-quality": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

@@ -1,0 +1,6 @@
+name = "beach-companion-maine-water-quality"
+main = "serverless/maine-water-quality-worker.js"
+compatibility_date = "2024-11-01"
+
+[observability]
+enabled = true

@@ -270,6 +270,46 @@ select, .button {
   color: var(--muted);
   font-size: 0.88rem;
 }
+.water-quality-card {
+  border-style: dashed;
+}
+.water-quality-status {
+  font-weight: 700;
+  color: var(--accent-2);
+}
+.water-quality-details {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+.water-quality-location {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #ffffff;
+}
+.water-quality-location h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+.water-quality-detail {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #f8fafc;
+  font-size: 0.95rem;
+}
+.water-quality-detail span {
+  color: var(--muted);
+}
+.water-quality-detail strong {
+  text-align: right;
+  overflow-wrap: anywhere;
+}
 .wind-heading-row {
   display: flex;
   align-items: flex-start;

@@ -1,5 +1,6 @@
-const APP_VERSION = 'v1.5.36';
+const APP_VERSION = 'v1.5.40';
 const queryParams = new URLSearchParams(window.location.search);
+const MAINE_WATER_QUALITY_PROXY_URL = queryParams.get('mhbProxyUrl') || '/api/water-quality/maine';
 const TEST_MODE = queryParams.get('testMode') === '1';
 const TEST_MODE_CONFIG = Object.freeze({
   enabled: TEST_MODE,
@@ -58,6 +59,36 @@ const BEACHES = [
       provider: 'coops',
       stationId: '8531680',
       label: 'NOAA Sandy Hook'
+    }),
+    waterQualitySource: Object.freeze({
+      provider: 'njdep',
+      municipalityIds: Object.freeze([353]),
+      maxDistanceMiles: 7,
+      locations: Object.freeze([
+        Object.freeze({
+          id: 'sandy_hook_ocean',
+          label: 'Sandy Hook Ocean Beach',
+          locationTypes: Object.freeze(['Ocean']),
+          beachNames: Object.freeze([
+            'Gunnison',
+            'Army Rec. Beach North',
+            'C Beach',
+            'Area C Surf Beach',
+            'Area E Visitor Center South',
+            'Fort Hancock'
+          ])
+        }),
+        Object.freeze({
+          id: 'sandy_hook_bay',
+          label: 'Sandy Hook Bay',
+          locationTypes: Object.freeze(['Bay']),
+          beachNames: Object.freeze([
+            'Horseshoe Cove',
+            'Spermaceti Cove',
+            'Plum Island'
+          ])
+        })
+      ])
     })
   },
   {
@@ -83,6 +114,24 @@ const BEACHES = [
       noaaTidesStation: '8532337',
       surflineSpotId: '5842041f4e65fad6a7708a01',
       agencyTz: 'America/New_York'
+    }),
+    waterQualitySource: Object.freeze({
+      provider: 'njdep',
+      municipalityIds: Object.freeze([328]),
+      maxDistanceMiles: 3,
+      locations: Object.freeze([
+        Object.freeze({
+          id: 'belmar_ocean',
+          label: 'Belmar Ocean Beach',
+          locationTypes: Object.freeze(['Ocean'])
+        }),
+        Object.freeze({
+          id: 'belmar_l_street_bay',
+          label: 'L Street Bay',
+          locationTypes: Object.freeze(['Bay', 'River']),
+          beachNames: Object.freeze(['L Street Beach'])
+        })
+      ])
     })
   },
   {
@@ -95,6 +144,18 @@ const BEACHES = [
       provider: 'coops',
       stationId: '8532337',
       label: 'NOAA Shark River'
+    }),
+    waterQualitySource: Object.freeze({
+      provider: 'njdep',
+      municipalityIds: Object.freeze([325]),
+      maxDistanceMiles: 3,
+      locations: Object.freeze([
+        Object.freeze({
+          id: 'asbury_park_ocean',
+          label: 'Asbury Park Ocean Beach',
+          locationTypes: Object.freeze(['Ocean'])
+        })
+      ])
     })
   },
   {
@@ -107,6 +168,40 @@ const BEACHES = [
       provider: 'coops',
       stationId: '8536110',
       label: 'NOAA Cape May'
+    }),
+    waterQualitySource: Object.freeze({
+      provider: 'njdep',
+      municipalityIds: Object.freeze([172, 173, 176]),
+      maxDistanceMiles: 8,
+      locations: Object.freeze([
+        Object.freeze({
+          id: 'cape_may_ocean',
+          label: 'Cape May Ocean Beach',
+          locationTypes: Object.freeze(['Ocean']),
+          beachNames: Object.freeze([
+            'Brooklyn',
+            'Philadelphia',
+            'Queen North',
+            'Ocean Ave',
+            'Congress',
+            'Grant',
+            'Broadway',
+            '2nd',
+            'Brainard'
+          ])
+        }),
+        Object.freeze({
+          id: 'cape_may_bay',
+          label: 'Cape May Bay',
+          locationTypes: Object.freeze(['Bay']),
+          beachNames: Object.freeze([
+            'Harbor Lane and Bay',
+            'Baltimore St and Delaware Ave',
+            'Sunset and Bay',
+            'New England Road'
+          ])
+        })
+      ])
     })
   },
   {
@@ -119,6 +214,10 @@ const BEACHES = [
       provider: 'coops',
       stationId: '8413320',
       label: 'NOAA Bar Harbor'
+    }),
+    waterQualitySource: Object.freeze({
+      provider: 'mhb',
+      proxyUrl: MAINE_WATER_QUALITY_PROXY_URL
     })
   },
   {
@@ -131,6 +230,10 @@ const BEACHES = [
       provider: 'coops',
       stationId: '8418150',
       label: 'NOAA Portland'
+    }),
+    waterQualitySource: Object.freeze({
+      provider: 'mhb',
+      proxyUrl: MAINE_WATER_QUALITY_PROXY_URL
     })
   },
   {
@@ -143,6 +246,21 @@ const BEACHES = [
       provider: 'coops',
       stationId: '8557380',
       label: 'NOAA Lewes'
+    }),
+    waterQualitySource: Object.freeze({
+      provider: 'dnrec',
+      locations: Object.freeze([
+        Object.freeze({
+          id: 'lewes_bay',
+          label: 'Lewes Bay Beach',
+          unitIds: Object.freeze([25025, 25026, 363621, 363697])
+        }),
+        Object.freeze({
+          id: 'cape_henlopen_ocean',
+          label: 'Cape Henlopen Ocean Beach',
+          unitIds: Object.freeze([290, 303, 351662, 351663])
+        })
+      ])
     })
   }
 ];
@@ -176,6 +294,9 @@ const radarControlsEl = document.getElementById('radarControls');
 const radarToggleEl = document.getElementById('radarToggle');
 const radarTimeEl = document.getElementById('radarTime');
 const radarUpdatedEl = document.getElementById('radarUpdated');
+const waterQualityCardEl = document.getElementById('waterQualityCard');
+const waterQualityStatusEl = document.getElementById('waterQualityStatus');
+const waterQualityDetailsEl = document.getElementById('waterQualityDetails');
 const windCardEl = windChartEl.closest('.card');
 const windHeadingEl = windCardEl?.querySelector('h2');
 const windSummaryEl = ensureWindSummaryEl();
@@ -192,6 +313,7 @@ const LAST_DAY_KEY = 'beach-app-selected-day';
 let latestAstronomy = null;
 let latestRangePeriods = [];
 let latestStrongestDaytimeWindSpeed = null;
+let latestWaterQuality = null;
 let activeDateKey = getLocalDateKey(getAppNow());
 let selectedDayKey = activeDateKey;
 let isLocatingBeach = false;
@@ -486,6 +608,7 @@ function renderNotes(notes) {
 function buildBeachNotes(data) {
   const precipitation = precipitationNote(data.hourly);
   const notes = [
+    waterQualityNote(data.waterQuality, data.isToday),
     data.isToday ? ripCurrentNote(data.alerts) : null,
     windShiftNote(data.hourly),
     precipitation,
@@ -493,6 +616,7 @@ function buildBeachNotes(data) {
     clothingNote(data.date, data.range, data.strongestWindSpeed, data.hourly),
     fullMoonRiseNote(data.astronomy)
   ]
+    .flatMap(note => Array.isArray(note) ? note : [note])
     .filter(Boolean)
     .sort((a, b) => a.priority - b.priority)
     .slice(0, 3);
@@ -812,12 +936,15 @@ async function loadBeach() {
   latestAstronomy = calculateAstronomy(beach, selectedDate);
   renderAstronomy(latestAstronomy);
   renderRadar(beach);
+  latestWaterQuality = null;
+  renderWaterQualityLoading(beach);
 
   const results = await Promise.allSettled([
     loadWeather(beach, selectedDate),
     loadTides(beach, selectedDate),
     loadWaterTemp(beach, selectedDate),
-    loadAlerts(beach)
+    loadAlerts(beach),
+    loadWaterQuality(beach, selectedDate)
   ]);
 
   const noteHours = getNotePeriodsForDate(latestHourlyPeriods, selectedDate);
@@ -830,6 +957,7 @@ async function loadBeach() {
     astronomy: latestAstronomy,
     date: selectedDate,
     isToday: isSameLocalDay(selectedDate, getAppNow()),
+    waterQuality: latestWaterQuality,
     range: findDailyTemperatureRange(rangePeriods, selectedDate),
     strongestWindSpeed: latestStrongestDaytimeWindSpeed
   });
@@ -2450,6 +2578,728 @@ function ripCurrentNote(alerts) {
   }
 
   return null;
+}
+
+function waterQualityNote(waterQuality, isToday) {
+  if (!isToday || !waterQuality) return null;
+
+  return (waterQuality.locations || [])
+    .map(location => {
+      const activeIncident = location.activeIncident;
+      const noteLabel = activeIncident?.locationLabel || location.noteLabel || location.label;
+      if (activeIncident?.type === 'CLOSURE') {
+        return {
+          text: `${noteLabel}: Closed`,
+          priority: 0
+        };
+      }
+
+      if (activeIncident?.type === 'ADVISORY') {
+        return {
+          text: `${noteLabel}: Advisory`,
+          priority: 1
+        };
+      }
+
+      if (activeIncident?.type === 'RESAMPLING') {
+        return {
+          text: `${noteLabel}: Resampling underway`,
+          priority: 2
+        };
+      }
+
+      if (activeIncident?.type === 'RAINFALL') {
+        return {
+          text: `${noteLabel}: Rainfall advisory`,
+          priority: 2
+        };
+      }
+
+      if (location.latestElevatedSample) {
+        return {
+          text: `${location.latestElevatedSample.beachName || location.label}: Elevated bacteria`,
+          priority: 2
+        };
+      }
+
+      return null;
+    })
+    .filter(Boolean);
+}
+
+async function loadWaterQuality(beach, selectedDate = getAppNow()) {
+  if (!beach.waterQualitySource) {
+    latestWaterQuality = null;
+    renderWaterQualityUnavailable('Water quality data is not configured for this beach.');
+    return;
+  }
+
+  if (beach.waterQualitySource.provider === 'njdep') {
+    await loadNjdepWaterQuality(beach, selectedDate);
+    return;
+  }
+
+  if (beach.waterQualitySource.provider === 'dnrec') {
+    await loadDnrecWaterQuality(beach);
+    return;
+  }
+
+  if (beach.waterQualitySource.provider === 'mhb') {
+    await loadMhbWaterQuality(beach);
+    return;
+  }
+
+  latestWaterQuality = null;
+  renderWaterQualityUnavailable('Water quality data is not available for this beach.');
+}
+
+async function loadNjdepWaterQuality(beach, selectedDate = getAppNow()) {
+  try {
+    const source = beach.waterQualitySource;
+    const waterStartDate = addDays(selectedDate, -45);
+    const incidentStartDate = addDays(selectedDate, -60);
+    const endDate = selectedDate;
+
+    const municipalityIds = getNjdepMunicipalityIds(source);
+    const responses = await Promise.all(municipalityIds.map(async municipalityId => {
+      const scopedSource = { ...source, municipalityId };
+      const [waterRes, incidentRes, countsRes] = await Promise.all([
+        fetch(buildNjdepWaterQualityUrl(scopedSource, waterStartDate, endDate)),
+        fetch(buildNjdepIncidentUrl(scopedSource, incidentStartDate, endDate)),
+        fetch(buildNjdepCountsUrl(scopedSource, incidentStartDate, endDate))
+      ]);
+
+      if (!waterRes.ok) {
+        throw new Error(`NJDEP water quality failed (${waterRes.status || 'no status'})`);
+      }
+
+      return {
+        waterCsv: await waterRes.text(),
+        incidentCsv: incidentRes.ok ? await incidentRes.text() : '',
+        countsData: countsRes.ok ? await countsRes.json() : null
+      };
+    }));
+
+    const sampleRows = filterNearbyNjdepRows(responses.flatMap(response => parseCsv(response.waterCsv)), beach, source);
+    const incidentRows = filterNearbyNjdepRows(responses.flatMap(response => parseCsv(response.incidentCsv)), beach, source);
+    const samples = sampleRows.map(normalizeNjdepSample).filter(Boolean);
+    const incidents = incidentRows.map(normalizeNjdepIncident).filter(Boolean);
+    const locations = buildNjdepWaterQualityLocations(source, samples, incidents, selectedDate);
+    const counts = aggregateNjdepCounts(responses.map(response => response.countsData?.payload).filter(Boolean));
+
+    latestWaterQuality = {
+      locations,
+      counts,
+      sourceLabel: 'NJDEP CCMP'
+    };
+
+    renderWaterQualityCard(beach, latestWaterQuality);
+  } catch (error) {
+    console.warn('NJDEP water quality failed', error);
+    latestWaterQuality = null;
+    renderWaterQualityUnavailable(`NJDEP water quality unavailable${error?.message ? `: ${error.message}` : ''}.`);
+  }
+}
+
+async function loadDnrecWaterQuality(beach) {
+  try {
+    const source = beach.waterQualitySource;
+    const unitIds = getDnrecUnitIds(source);
+    const [layerRes, detailResponses] = await Promise.all([
+      fetch(buildDnrecLayerUrl(unitIds)),
+      Promise.all(unitIds.map(async unitId => {
+        try {
+          const res = await fetch(buildDnrecDetailUrl(unitId));
+          return {
+            unitId,
+            html: res.ok ? await res.text() : ''
+          };
+        } catch {
+          return {
+            unitId,
+            html: ''
+          };
+        }
+      }))
+    ]);
+
+    if (!layerRes.ok) {
+      throw new Error(`DNREC map layer failed (${layerRes.status || 'no status'})`);
+    }
+
+    const layerData = await layerRes.json();
+    const units = (layerData.features || []).map(normalizeDnrecUnit).filter(Boolean);
+    const detailsByUnitId = detailResponses.reduce((details, response) => {
+      details.set(String(response.unitId), response.html ? parseDnrecDetailPage(response.html) : null);
+      return details;
+    }, new Map());
+    const unavailableDetailCount = detailResponses.filter(response => !response.html).length;
+
+    latestWaterQuality = {
+      locations: buildDnrecWaterQualityLocations(source, units, detailsByUnitId),
+      detailNote: unavailableDetailCount
+        ? 'DNREC detail pages block browser reads, so sample tables may be unavailable here.'
+        : '',
+      sourceLabel: 'DNREC Recreational Waters'
+    };
+
+    renderWaterQualityCard(beach, latestWaterQuality);
+  } catch (error) {
+    console.warn('DNREC water quality failed', error);
+    latestWaterQuality = null;
+    renderWaterQualityUnavailable(`DNREC water quality unavailable${error?.message ? `: ${error.message}` : ''}.`);
+  }
+}
+
+async function loadMhbWaterQuality(beach) {
+  try {
+    const source = beach.waterQualitySource;
+    const res = await fetch(buildMhbProxyUrl(source, beach.id));
+    if (!res.ok) {
+      throw new Error(`Maine Healthy Beaches proxy failed (${res.status || 'no status'})`);
+    }
+
+    latestWaterQuality = await res.json();
+    renderWaterQualityCard(beach, latestWaterQuality);
+  } catch (error) {
+    console.warn('Maine Healthy Beaches water quality failed', error);
+    latestWaterQuality = null;
+    renderWaterQualityUnavailable(`Maine Healthy Beaches water quality unavailable${error?.message ? `: ${error.message}` : ''}.`);
+  }
+}
+
+function buildNjdepWaterQualityUrl(source, startDate, endDate) {
+  return buildNjdepPublicDataUrl('data/download/waterQuality', source, startDate, endDate, {
+    downloadType: 'water-quality'
+  });
+}
+
+function buildNjdepIncidentUrl(source, startDate, endDate) {
+  return buildNjdepPublicDataUrl('data/download/incident/', source, startDate, endDate, {
+    downloadType: 'incident'
+  });
+}
+
+function buildNjdepCountsUrl(source, startDate, endDate) {
+  return buildNjdepPublicDataUrl('data/counts', source, startDate, endDate);
+}
+
+function buildNjdepPublicDataUrl(path, source, startDate, endDate, extra = {}) {
+  const params = new URLSearchParams({
+    program: '4',
+    municipality: String(source.municipalityId),
+    startDate: getLocalDateKey(startDate),
+    endDate: getLocalDateKey(endDate),
+    ...extra
+  });
+  return `https://beachapi.njdep.rutgers.edu/api/public/${path}?${params.toString()}`;
+}
+
+function getNjdepMunicipalityIds(source) {
+  if (Array.isArray(source.municipalityIds) && source.municipalityIds.length) {
+    return source.municipalityIds;
+  }
+  return source.municipalityId ? [source.municipalityId] : [];
+}
+
+function buildDnrecLayerUrl(unitIds) {
+  const where = unitIds.length
+    ? `UnitID IN (${unitIds.map(unitId => Number(unitId)).filter(Number.isFinite).join(',')})`
+    : '1=1';
+  const params = new URLSearchParams({
+    where,
+    outFields: 'UnitID,UnitName,CurrentAdvisory,UnitDesc,URL,newURL',
+    returnGeometry: 'true',
+    outSR: '4326',
+    f: 'json'
+  });
+  return `https://enterprise.firstmap.delaware.gov/arcgis/rest/services/Environmental/DE_DNREC_Monitoring_Network/MapServer/2/query?${params.toString()}`;
+}
+
+function buildDnrecDetailUrl(unitId) {
+  return `https://recwaters.dnrec.delaware.gov/BeachInfo.aspx?UnitID=${encodeURIComponent(unitId)}`;
+}
+
+function buildMhbProxyUrl(source, beachId) {
+  const url = new URL(source.proxyUrl || '/api/water-quality/maine', window.location.origin);
+  url.searchParams.set('beach', beachId);
+  return url.toString();
+}
+
+function getDnrecUnitIds(source) {
+  return getUniqueSorted((source.locations || [])
+    .flatMap(location => location.unitIds || [])
+    .map(unitId => String(unitId)));
+}
+
+function buildDnrecWaterQualityLocations(source, units, detailsByUnitId) {
+  return (source.locations || []).map(config => {
+    const locationUnits = units.filter(unit => (config.unitIds || []).some(unitId => String(unitId) === String(unit.unitId)));
+    const samples = locationUnits
+      .map(unit => {
+        const latestSample = detailsByUnitId.get(String(unit.unitId))?.latestSample;
+        return latestSample ? {
+          ...latestSample,
+          stationName: unit.unitName,
+          beachName: unit.unitName,
+          locationType: unit.description || 'DNREC'
+        } : null;
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.date - a.date);
+    const activeIncident = getDnrecActiveIncident(locationUnits);
+    const latestSample = samples[0] || null;
+
+    return {
+      id: config.id,
+      label: config.label,
+      activeIncident,
+      latestSample,
+      latestSamples: samples,
+      latestElevatedSample: getLatestElevatedDnrecSample(samples),
+      sampleCount: samples.length,
+      incidentCount: activeIncident ? 1 : 0,
+      stationNames: getUniqueSorted(locationUnits.map(unit => unit.unitName).filter(Boolean)),
+      beachNames: getUniqueSorted(locationUnits.map(unit => unit.unitName).filter(Boolean)),
+      geometricMean: getLatestDnrecMean(locationUnits, detailsByUnitId, 'geometricMean'),
+      thirtyDayGeometricMean: getLatestDnrecMean(locationUnits, detailsByUnitId, 'thirtyDayGeometricMean')
+    };
+  });
+}
+
+function normalizeDnrecUnit(feature) {
+  const attributes = feature?.attributes || {};
+  const unitId = attributes.UnitID;
+  if (unitId === undefined || unitId === null) return null;
+
+  return {
+    unitId: String(unitId),
+    unitName: attributes.UnitName,
+    currentAdvisory: Number(attributes.CurrentAdvisory),
+    description: attributes.UnitDesc,
+    sourceUrl: attributes.URL || buildDnrecDetailUrl(unitId),
+    lat: feature?.geometry?.y,
+    lon: feature?.geometry?.x
+  };
+}
+
+function getDnrecActiveIncident(units) {
+  const unit = [...units].sort((a, b) => getDnrecStatusRank(b.currentAdvisory) - getDnrecStatusRank(a.currentAdvisory))[0];
+  if (!unit || getDnrecStatusRank(unit.currentAdvisory) <= 0) return null;
+
+  return {
+    type: unit.currentAdvisory === 0 ? 'ADVISORY' : 'RESAMPLING',
+    rawType: getDnrecStatusLabel(unit.currentAdvisory),
+    reason: unit.unitName,
+    sourceUrl: unit.sourceUrl
+  };
+}
+
+function getDnrecStatusRank(status) {
+  if (status === 0) return 2;
+  if (status === 2) return 1;
+  return 0;
+}
+
+function getDnrecStatusLabel(status) {
+  if (status === 0) return 'Current Advisory';
+  if (status === 2) return 'Resampling Enterococcus Spike';
+  if (status === 3) return 'Winter - Not Currently Sampling';
+  if (status === 4) return 'Monitoring - No Current Advisory';
+  if (status === 1) return 'Advisories Not Issued';
+  return 'Unknown';
+}
+
+function parseDnrecDetailPage(html) {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const samples = parseDnrecSampleRows(doc);
+
+  return {
+    geometricMean: parseNumericText(doc.getElementById('ContentPlaceHolder1_lblEntro')?.textContent),
+    thirtyDayGeometricMean: parseNumericText(doc.getElementById('ContentPlaceHolder1_lblLast30daysEntro')?.textContent),
+    latestSample: samples[0] || null,
+    samples
+  };
+}
+
+function parseDnrecSampleRows(doc) {
+  return [...doc.querySelectorAll('#ContentPlaceHolder1_gvEntro tbody tr')]
+    .map(row => {
+      const cells = [...row.querySelectorAll('td')].map(cell => cell.textContent.trim());
+      if (cells.length < 2) return null;
+
+      const date = parseNjdepDate(cells[0]);
+      const value = parseNumericText(cells[1]);
+      if (!date || !Number.isFinite(value)) return null;
+
+      return {
+        date,
+        dateLabel: cells[0],
+        timeLabel: '',
+        stationName: '',
+        beachName: '',
+        locationType: 'DNREC',
+        value,
+        units: 'CFU/100mL',
+        resultType: 'Enterococcus'
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.date - a.date);
+}
+
+function getLatestElevatedDnrecSample(samples) {
+  return samples
+    .filter(sample => sample.value > 104)
+    .sort((a, b) => b.value - a.value)[0] || null;
+}
+
+function getLatestDnrecMean(units, detailsByUnitId, key) {
+  return units
+    .map(unit => ({
+      label: unit.unitName,
+      value: detailsByUnitId.get(String(unit.unitId))?.[key]
+    }))
+    .find(item => Number.isFinite(item.value)) || null;
+}
+
+function parseNumericText(value) {
+  const number = Number.parseFloat(String(value || '').replace(/,/g, ''));
+  return Number.isFinite(number) ? number : null;
+}
+
+function buildNjdepWaterQualityLocations(source, samples, incidents, selectedDate) {
+  const configs = source.locations?.length
+    ? source.locations
+    : [Object.freeze({ id: 'default', label: 'Water Quality', locationTypes: Object.freeze([]) })];
+
+  return configs.map(config => {
+    const locationSamples = samples.filter(sample => matchesNjdepLocation(sample, config));
+    const locationIncidents = incidents.filter(incident => matchesNjdepLocation(incident, config));
+    const latestSamples = getLatestNjdepSamples(locationSamples);
+    const activeIncident = getActiveNjdepIncident(locationIncidents, selectedDate);
+
+    return {
+      id: config.id,
+      label: config.label,
+      activeIncident,
+      latestSample: latestSamples[0] || null,
+      latestSamples,
+      latestElevatedSample: getLatestElevatedNjdepSample(latestSamples),
+      sampleCount: locationSamples.length,
+      incidentCount: locationIncidents.length,
+      stationNames: getUniqueSorted(locationSamples.map(sample => sample.stationName).filter(Boolean)),
+      beachNames: getUniqueSorted([
+        ...locationSamples.map(sample => sample.beachName),
+        ...locationIncidents.map(incident => incident.beachName)
+      ].filter(Boolean))
+    };
+  });
+}
+
+function matchesNjdepLocation(item, config) {
+  const locationTypes = config.locationTypes || [];
+  const beachNames = config.beachNames || [];
+  const hasTypeMatch = locationTypes.length
+    ? locationTypes.some(type => sameNjdepText(type, item.locationType))
+    : true;
+  const hasNameMatch = beachNames.length
+    ? beachNames.some(name => sameNjdepBeachName(name, item.beachName))
+    : true;
+
+  return hasTypeMatch && hasNameMatch;
+}
+
+function sameNjdepText(a, b) {
+  return normalizeNjdepText(a) === normalizeNjdepText(b);
+}
+
+function sameNjdepBeachName(expected, actual) {
+  const normalizedExpected = normalizeNjdepText(expected);
+  const normalizedActual = normalizeNjdepBaseBeachName(actual);
+  return normalizedActual === normalizedExpected;
+}
+
+function normalizeNjdepBaseBeachName(value) {
+  return normalizeNjdepText(value)
+    .replace(/\s*[nsew]\d+$/i, '')
+    .replace(/\s+(north|south|east|west)\s+\d+$/i, '');
+}
+
+function normalizeNjdepText(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/\./g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function aggregateNjdepCounts(payloads) {
+  return payloads.reduce((totals, payload) => {
+    totals['water-quality'] += Number(payload?.['water-quality']) || 0;
+    totals.incident += Number(payload?.incident) || 0;
+    return totals;
+  }, { 'water-quality': 0, incident: 0 });
+}
+
+function getUniqueSorted(values) {
+  return [...new Set(values)].sort((a, b) => a.localeCompare(b));
+}
+
+function parseCsv(csvText) {
+  if (!csvText || !csvText.trim()) return [];
+
+  const rows = [];
+  let row = [];
+  let value = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < csvText.length; i++) {
+    const char = csvText[i];
+    const next = csvText[i + 1];
+
+    if (char === '"') {
+      if (inQuotes && next === '"') {
+        value += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (char === ',' && !inQuotes) {
+      row.push(value);
+      value = '';
+      continue;
+    }
+
+    if ((char === '\n' || char === '\r') && !inQuotes) {
+      if (char === '\r' && next === '\n') i++;
+      row.push(value);
+      if (row.some(cell => cell !== '')) rows.push(row);
+      row = [];
+      value = '';
+      continue;
+    }
+
+    value += char;
+  }
+
+  row.push(value);
+  if (row.some(cell => cell !== '')) rows.push(row);
+  if (rows.length < 2) return [];
+
+  const headers = rows[0].map(header => header.trim());
+  return rows.slice(1).map(cells => headers.reduce((record, header, index) => {
+    record[header] = cells[index] || '';
+    return record;
+  }, {}));
+}
+
+function filterNearbyNjdepRows(rows, beach, source) {
+  const maxDistance = source.maxDistanceMiles || 5;
+  return rows
+    .map(row => {
+      const lat = Number.parseFloat(row.Lat_DD);
+      const lon = Number.parseFloat(row.Lon_DD);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+      return {
+        row,
+        distanceMiles: getDistanceMiles(beach.lat, beach.lon, lat, lon)
+      };
+    })
+    .filter(item => item && item.distanceMiles <= maxDistance)
+    .map(item => item.row);
+}
+
+function normalizeNjdepSample(row) {
+  const date = parseNjdepDateTime(row.Result_Date, row.Result_Time);
+  const value = Number.parseFloat(row.Result_Measure);
+  if (!date || !Number.isFinite(value)) return null;
+
+  return {
+    date,
+    dateLabel: row.Result_Date,
+    timeLabel: row.Result_Time,
+    stationName: row.Station_Name,
+    beachName: row.Beach_Name,
+    locationType: row.Location_Type_Name,
+    stationType: row.Station_Type_Name,
+    value,
+    units: row.Units_Name,
+    resultType: row.Result_Type_Name,
+    remark: row.Remark_Code_Name
+  };
+}
+
+function normalizeNjdepIncident(row) {
+  const startDate = parseNjdepDate(row.Incident_Start_Date);
+  const endDate = parseNjdepDate(row.Incident_End_Date);
+  if (!startDate) return null;
+
+  return {
+    startDate,
+    endDate,
+    startLabel: row.Incident_Start_Date,
+    endLabel: row.Incident_End_Date,
+    stationName: row.Station_Name,
+    beachName: row.Beach_Name,
+    locationType: row.Location_Type_Name,
+    type: getNjdepIncidentType(row.Beach_Act_Type_Name),
+    rawType: row.Beach_Act_Type_Name,
+    reason: row.Beach_Reason_Type_Desc || row.Beach_Reason_Type_Name,
+    comments: row.Incident_Additional_Comments
+  };
+}
+
+function getNjdepIncidentType(value) {
+  const normalized = String(value || '').toUpperCase();
+  if (normalized.includes('CLOSURE')) return 'CLOSURE';
+  if (normalized.includes('ADV')) return 'ADVISORY';
+  return normalized || 'INCIDENT';
+}
+
+function getLatestNjdepSamples(samples) {
+  if (!samples.length) return [];
+
+  const sorted = [...samples].sort((a, b) => b.date - a.date);
+  const latestDayKey = getLocalDateKey(sorted[0].date);
+  return sorted.filter(sample => getLocalDateKey(sample.date) === latestDayKey);
+}
+
+function getLatestElevatedNjdepSample(samples) {
+  return samples
+    .filter(sample => sample.resultType === 'Enterococcus' && sample.value > 104)
+    .sort((a, b) => b.value - a.value)[0] || null;
+}
+
+function getActiveNjdepIncident(incidents, selectedDate) {
+  const selectedDay = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
+  const nextDay = addDays(selectedDay, 1);
+
+  return incidents
+    .filter(incident => {
+      const end = incident.endDate ? addDays(incident.endDate, 1) : nextDay;
+      return incident.startDate < nextDay && end > selectedDay;
+    })
+    .sort((a, b) => {
+      const typeRank = { CLOSURE: 2, ADVISORY: 1 };
+      return (typeRank[b.type] || 0) - (typeRank[a.type] || 0) || b.startDate - a.startDate;
+    })[0] || null;
+}
+
+function parseNjdepDate(value) {
+  const match = String(value || '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!match) return null;
+
+  const [, month, day, year] = match.map(Number);
+  const date = new Date(year, month - 1, day);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function parseNjdepDateTime(dateValue, timeValue) {
+  const date = parseNjdepDate(dateValue);
+  if (!date) return null;
+
+  const timeMatch = String(timeValue || '').match(/^(\d{1,2}):(\d{2})$/);
+  if (timeMatch) {
+    date.setHours(Number(timeMatch[1]), Number(timeMatch[2]), 0, 0);
+  }
+
+  return date;
+}
+
+function addDays(date, days) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function renderWaterQualityLoading(beach) {
+  if (!waterQualityCardEl || !waterQualityStatusEl || !waterQualityDetailsEl) return;
+
+  waterQualityCardEl.hidden = false;
+  waterQualityDetailsEl.innerHTML = '';
+  waterQualityStatusEl.textContent = beach.waterQualitySource
+    ? `Checking ${getWaterQualityProviderLabel(beach.waterQualitySource)} water quality data...`
+    : 'Water quality data is not configured for this beach.';
+}
+
+function renderWaterQualityUnavailable(message) {
+  if (!waterQualityCardEl || !waterQualityStatusEl || !waterQualityDetailsEl) return;
+
+  waterQualityCardEl.hidden = false;
+  waterQualityStatusEl.textContent = message;
+  waterQualityDetailsEl.innerHTML = '';
+}
+
+function renderWaterQualityCard(beach, waterQuality) {
+  if (!waterQualityCardEl || !waterQualityStatusEl || !waterQualityDetailsEl) return;
+
+  const waterCount = waterQuality.counts?.['water-quality'];
+  const incidentCount = waterQuality.counts?.incident;
+  const problemLocations = (waterQuality.locations || []).filter(location =>
+    location.activeIncident || location.latestElevatedSample
+  );
+  const statusText = problemLocations.length
+    ? problemLocations.map(location => `${location.label}: ${getWaterQualityLocationStatusText(location)}`).join(' · ')
+    : 'No active water quality advisory or closure for the monitored locations.';
+
+  waterQualityStatusEl.textContent = statusText;
+
+  waterQualityDetailsEl.innerHTML = [
+    ...(waterQuality.locations || []).map(renderWaterQualityLocation),
+    waterQuality.detailNote ? renderWaterQualityDetail('Detail note', waterQuality.detailNote) : null,
+    Number.isFinite(waterCount) || Number.isFinite(incidentCount)
+      ? renderWaterQualityDetail('Query count', `${Number.isFinite(waterCount) ? waterCount : 0} samples · ${Number.isFinite(incidentCount) ? incidentCount : 0} incidents`)
+      : null,
+    renderWaterQualityDetail('Source', waterQuality.sourceLabel)
+  ].filter(Boolean).join('');
+}
+
+function renderWaterQualityLocation(location) {
+  const latest = location.latestSample;
+  const activeIncident = location.activeIncident;
+
+  return `
+    <section class="water-quality-location">
+      <h3>${escapeHtml(location.label)}</h3>
+      ${renderWaterQualityDetail('Status', getWaterQualityLocationStatusText(location))}
+      ${latest ? renderWaterQualityDetail('Latest sample', `${latest.beachName || latest.stationName} · ${formatShortDate(latest.date)} ${latest.timeLabel || ''}`) : renderWaterQualityDetail('Latest sample', 'No recent sample in query window')}
+      ${latest ? renderWaterQualityDetail('Enterococcus', `${latest.value} ${latest.units || 'CFU/100mL'}`) : ''}
+      ${latest ? renderWaterQualityDetail('Station', `${latest.stationName || '--'} · ${latest.locationType || '--'}`) : ''}
+      ${activeIncident ? renderWaterQualityDetail('Incident', `${activeIncident.rawType || activeIncident.type} · ${activeIncident.reason || 'Water quality'}`) : ''}
+      ${location.thirtyDayGeometricMean ? renderWaterQualityDetail('30-day geometric mean', `${location.thirtyDayGeometricMean.value} CFU/100mL · ${location.thirtyDayGeometricMean.label}`) : ''}
+      ${location.geometricMean ? renderWaterQualityDetail('YTD geometric mean', `${location.geometricMean.value} CFU/100mL · ${location.geometricMean.label}`) : ''}
+      ${location.beachNames.length ? renderWaterQualityDetail('Monitored beaches', location.beachNames.join(', ')) : ''}
+    </section>
+  `;
+}
+
+function getWaterQualityLocationStatusText(location) {
+  if (location.activeIncident?.type === 'CLOSURE') return 'Closed';
+  if (location.activeIncident?.type === 'ADVISORY') return 'Advisory';
+  if (location.activeIncident?.type === 'RESAMPLING') return 'Resampling underway';
+  if (location.activeIncident?.type === 'RAINFALL') return 'Rainfall advisory';
+  if (location.latestElevatedSample) return 'Elevated bacteria sample';
+  return 'No active advisory';
+}
+
+function getWaterQualityProviderLabel(source) {
+  if (source?.provider === 'mhb') return 'Maine Healthy Beaches';
+  if (source?.provider === 'dnrec') return 'DNREC';
+  if (source?.provider === 'njdep') return 'NJDEP';
+  return 'agency';
+}
+
+function renderWaterQualityDetail(label, value) {
+  return `
+    <div class="water-quality-detail">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+    </div>
+  `;
 }
 
 async function loadWaterTemp(beach, selectedDate = getAppNow()) {
