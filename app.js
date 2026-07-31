@@ -1,6 +1,7 @@
-const APP_VERSION = 'v1.5.40';
+const APP_VERSION = 'v1.5.43';
 const queryParams = new URLSearchParams(window.location.search);
 const MAINE_WATER_QUALITY_PROXY_URL = queryParams.get('mhbProxyUrl') || '/api/water-quality/maine';
+const NDBC_WAVES_PROXY_URL = queryParams.get('wavesProxyUrl') || 'https://beach-companion-ndbc-waves.a-weitzner.workers.dev';
 const TEST_MODE = queryParams.get('testMode') === '1';
 const TEST_MODE_CONFIG = Object.freeze({
   enabled: TEST_MODE,
@@ -9,6 +10,7 @@ const TEST_MODE_CONFIG = Object.freeze({
   alertsFixture: queryParams.get('alertsFixture'),
   tidesFixture: queryParams.get('tidesFixture'),
   waterTempFixture: queryParams.get('waterTempFixture'),
+  wavesFixture: queryParams.get('wavesFixture'),
   astronomyFixture: queryParams.get('astronomyFixture')
 });
 const SIMULATED_NOW = parseSimulatedNow(TEST_MODE_CONFIG.simNowRaw);
@@ -46,6 +48,54 @@ const WIND_REGION_PANELS = Object.freeze({
     imageHeight: 488,
     marker: Object.freeze({ x: 50, y: 52 }),
     arrowOffset: Object.freeze({ x: 18, y: -6 })
+  })
+});
+const WAVE_MODEL_STATUS = Object.freeze({
+  OK: 'ok',
+  DISABLED: 'disabled',
+  MISSING_WAVE_HEIGHT: 'missing-wave-height',
+  MISSING_WAVE_PERIOD: 'missing-wave-period',
+  MISSING_TIDE: 'missing-tide',
+  MISSING_REFERENCE_DEPTH: 'missing-reference-depth',
+  STALE_WAVE_DATA: 'stale-wave-data',
+  STALE_TIDE_DATA: 'stale-tide-data',
+  INVALID_INPUT: 'invalid-input',
+  DISPERSION_FAILED: 'dispersion-failed',
+  NO_BREAKING_WITHIN_PROFILE: 'no-breaking-within-profile',
+  ALREADY_BREAKING_AT_OFFSHORE_BOUNDARY: 'already-breaking-at-offshore-boundary',
+  BREAKING_CONTOUR_LANDWARD_OF_LAT: 'breaking-contour-landward-of-lat',
+  UNSUPPORTED_BELOW_LAT_GEOMETRY: 'unsupported-below-lat-geometry'
+});
+const GRAVITY_MPS2 = 9.80665;
+const TWO_PI = 2 * Math.PI;
+const WAVE_MODEL_LIMITS = Object.freeze({
+  minWaveHeightM: 0.01,
+  maxWaveHeightM: 15,
+  minWavePeriodS: 1,
+  maxWavePeriodS: 30,
+  minReferenceDepthM: 0.1,
+  maxReferenceDepthM: 500,
+  waveDataMaxAgeMinutes: 90,
+  tideDataMaxAgeMinutes: 30
+});
+const WAVE_MODEL_CONFIG = Object.freeze({
+  belmar: Object.freeze({
+    enabled: true,
+    profileDatum: 'LAT',
+    offshoreSlope: 1 / 50,
+    landwardSlope: 1 / 5,
+    maxProfileDepthM: 4.0,
+    breakerIndexGamma: 0.55,
+    tideStationId: '8532337',
+    tidePredictionDatum: 'MLLW',
+    publishedDatumToLatOffsetM: null,
+    allowApproximateDatum: true,
+    buoyStationId: '44091',
+    proxyUrl: NDBC_WAVES_PROXY_URL,
+    offshoreReferenceDepthM: 25,
+    shoreNormalDegrees: null,
+    profileStepM: 1.0,
+    breakDistanceToleranceM: 0.1
   })
 });
 const BEACHES = [
@@ -97,6 +147,7 @@ const BEACHES = [
     lat: 40.1784,
     lon: -74.0210,
     tideStationId: '8532337',
+    waveModelConfigId: 'belmar',
     waterTempSource: Object.freeze({
       provider: 'safeBeachDay',
       label: 'NOAA buoy near Barnegat',
@@ -279,6 +330,11 @@ const weatherFeelsEl = ensureWeatherFeelsEl();
 const weatherRangeEl = ensureWeatherRangeEl();
 const waterTempEl = document.getElementById('waterTemp');
 const waterUpdatedEl = document.getElementById('waterUpdated');
+const offshoreWavesEl = document.getElementById('offshoreWaves');
+const estimatedBreakersEl = document.getElementById('estimatedBreakers');
+const breakPointEl = document.getElementById('breakPoint');
+const waveModelDetailsEl = document.getElementById('waveModelDetails');
+const waveModelDetailTextEl = document.getElementById('waveModelDetailText');
 const sunriseTimeEl = document.getElementById('sunriseTime');
 const sunsetTimeEl = document.getElementById('sunsetTime');
 const moonriseTimeEl = document.getElementById('moonriseTime');
@@ -378,6 +434,7 @@ function getTestModeBannerParts() {
     ['alerts', 'Alerts'],
     ['tides', 'Tides'],
     ['waterTemp', 'Water Temp'],
+    ['waves', 'Waves'],
     ['astronomy', 'Astronomy']
   ].forEach(([key, label]) => {
     const fixtureName = getFixtureParam(key);
@@ -506,7 +563,7 @@ phrase = `Wind shifting ${dirText}`;
 
   return {
     text: `${phrase} ${timeText}`,
-    priority: 3
+    priority: 4
   };
 }
 
@@ -562,7 +619,7 @@ function precipitationNote(hours) {
   if (!best) return null;
 
   const diff = best.time - now;
-  const priority = best.severity === 'Thunderstorms' ? 1 : 4;
+  const priority = getPrecipitationNotePriority(best.severity);
 
   if (diff <= 60 * 60 * 1000) {
     return {
@@ -592,6 +649,15 @@ function rankSeverity(severity) {
     "Rain": 2,
     "Light rain": 1
   }[severity] || 0;
+}
+
+function getPrecipitationNotePriority(severity) {
+  return {
+    "Thunderstorms": 1,
+    "Heavy rain": 2,
+    "Rain": 3,
+    "Light rain": 5
+  }[severity] || 4;
 }
 
 function renderNotes(notes) {
@@ -1006,7 +1072,12 @@ function getNotePeriodsForDate(periods, selectedDate) {
   }
 
   const now = getAppNow();
-  return dayPeriods.filter(period => new Date(period.startTime) >= now);
+  return dayPeriods.filter(period => {
+    const start = new Date(period.startTime);
+    if (Number.isNaN(start.getTime())) return false;
+    const end = period.endTime ? new Date(period.endTime) : new Date(start.getTime() + 60 * 60 * 1000);
+    return start >= now || end > now;
+  });
 }
 
 function getSummaryPeriod(periods, selectedDate) {
@@ -3302,21 +3373,713 @@ function renderWaterQualityDetail(label, value) {
   `;
 }
 
-async function loadWaterTemp(beach, selectedDate = getAppNow()) {
-  if (!isSameLocalDay(selectedDate, getAppNow())) {
-    waterTempEl.textContent = '--';
-    waterUpdatedEl.textContent = 'Water temp is only available for today.';
+function renderOceanLoading() {
+  waterTempEl.textContent = '--';
+  waterUpdatedEl.textContent = 'Checking ocean data...';
+  renderWaveModelUnavailable('Checking waves...');
+}
+
+function renderWaveModelUnavailable(message = '--') {
+  if (offshoreWavesEl) offshoreWavesEl.textContent = message;
+  if (estimatedBreakersEl) estimatedBreakersEl.textContent = '--';
+  if (breakPointEl) breakPointEl.textContent = '--';
+  if (waveModelDetailsEl) waveModelDetailsEl.hidden = true;
+  if (waveModelDetailTextEl) waveModelDetailTextEl.innerHTML = '';
+}
+
+function renderWaveModel(oceanWave) {
+  if (!offshoreWavesEl || !estimatedBreakersEl || !breakPointEl) return;
+
+  if (!oceanWave?.offshoreWave) {
+    if (oceanWave?.error) {
+      offshoreWavesEl.textContent = getWaveModelErrorLabel(oceanWave.error);
+      estimatedBreakersEl.textContent = '--';
+      breakPointEl.textContent = '--';
+      renderWaveModelDetails(oceanWave);
+      return;
+    }
+
+    renderWaveModelUnavailable('Unavailable');
     return;
   }
 
-  const reading = await fetchWaterTempSource(beach.waterTempSource);
+  const offshore = oceanWave.offshoreWave;
+  offshoreWavesEl.textContent = `${formatFeet(offshore.significantHeightM)} at ${Math.round(offshore.periodS)} sec`;
+
+  const estimate = oceanWave.estimate;
+  if (estimate?.status !== WAVE_MODEL_STATUS.OK) {
+    estimatedBreakersEl.textContent = 'Unavailable';
+    breakPointEl.textContent = '--';
+    renderWaveModelDetails(oceanWave);
+    return;
+  }
+
+  estimatedBreakersEl.textContent = `Approx. ${formatFeet(estimate.breaking.waveHeightM)}`;
+  breakPointEl.textContent = `About ${roundToNearest(metersToYards(estimate.breaking.distanceFromCurrentWaterlineM), 5)} yd offshore`;
+  renderWaveModelDetails(oceanWave);
+}
+
+function renderWaveModelDetails(oceanWave) {
+  if (!waveModelDetailsEl || !waveModelDetailTextEl) return;
+
+  const estimate = oceanWave?.estimate;
+  const lines = [];
+
+  if (estimate?.status === WAVE_MODEL_STATUS.OK) {
+    lines.push(`Estimated breaking depth: ${formatFeet(estimate.breaking.localDepthM)}`);
+    lines.push(`Estimated breaking distance: ${roundToNearest(metersToYards(estimate.breaking.distanceFromCurrentWaterlineM), 5)} yd from current waterline`);
+    lines.push(`Breaking criterion: ${estimate.breaking.governingCriterion === 'depth' ? 'depth-limited' : 'steepness-limited'}`);
+    lines.push(`Submerged profile: 1:${Math.round(1 / estimate.inputs.offshoreSlope)}`);
+    lines.push(`Exposed beach face: 1:${Math.round(1 / estimate.inputs.landwardSlope)}`);
+    if (estimate.metadata?.approximate) {
+      lines.push(`${estimate.metadata.tideSourceDatum} tide used as approximate ${estimate.metadata.modelDatum}`);
+    }
+  } else if (estimate?.status) {
+    lines.push(`Estimated breakers unavailable: ${estimate.status.replaceAll('-', ' ')}`);
+  } else if (oceanWave?.error) {
+    lines.push(getWaveModelErrorDetail(oceanWave.error));
+  }
+
+  lines.push('Estimated from offshore buoy conditions, tide level, and a simplified beach profile. Actual waves vary with sandbars, wind, direction, storms, and local bathymetry.');
+
+  waveModelDetailsEl.hidden = false;
+  waveModelDetailTextEl.innerHTML = lines.map(line => `<div>${escapeHtml(line)}</div>`).join('');
+}
+
+function getWaveModelErrorLabel(error) {
+  const message = error?.message || '';
+  if (message.includes('proxy route is not deployed')) return 'Proxy not configured';
+  return 'Unavailable';
+}
+
+function getWaveModelErrorDetail(error) {
+  const message = error?.message || String(error || '');
+  if (message.includes('proxy route is not deployed')) {
+    return 'NDBC waves need the /api/waves/ndbc proxy route or a wavesProxyUrl test parameter.';
+  }
+  return `Wave data unavailable: ${message || 'unknown error'}`;
+}
+
+async function loadWaterTemp(beach, selectedDate = getAppNow()) {
+  renderOceanLoading();
+
+  if (!isSameLocalDay(selectedDate, getAppNow())) {
+    waterTempEl.textContent = '--';
+    waterUpdatedEl.textContent = 'Water temp is only available for today.';
+    renderWaveModelUnavailable('Only today');
+    return;
+  }
+
+  const [reading, oceanWave] = await Promise.all([
+    fetchWaterTempSource(beach.waterTempSource),
+    loadWaveModelForBeach(beach).catch(error => {
+      console.warn('Wave model failed', error);
+      return { error };
+    })
+  ]);
   waterTempEl.textContent = `${reading.temperature}°F`;
+  renderWaveModel(oceanWave);
 
   const altReading = await fetchAltWaterTempSource(beach.altWaterTempSource);
   waterUpdatedEl.innerHTML = [
     escapeHtml(reading.label),
+    oceanWave?.sourceLabel ? `Waves: ${escapeHtml(oceanWave.sourceLabel)}` : null,
     altReading ? `Alt: ${escapeHtml(altReading.label)} ${escapeHtml(altReading.temperature)}°F` : null
   ].filter(Boolean).join('<br>');
+}
+
+async function loadWaveModelForBeach(beach) {
+  const config = WAVE_MODEL_CONFIG[beach?.waveModelConfigId];
+  if (!config?.enabled) {
+    return {
+      estimate: { status: WAVE_MODEL_STATUS.DISABLED }
+    };
+  }
+
+  const now = getAppNow();
+  const [offshoreWave, tide] = await Promise.all([
+    fetchOffshoreWave(config, now),
+    fetchWaveModelTide(config, now)
+  ]);
+
+  return {
+    offshoreWave,
+    sourceLabel: `NDBC ${config.buoyStationId}`,
+    estimate: estimateNearshoreBreaking({
+      locationId: beach.id,
+      locationConfig: config,
+      offshoreWave,
+      tide,
+      now
+    })
+  };
+}
+
+async function fetchOffshoreWave(config, now) {
+  const fixtureName = getFixtureParam('waves');
+  if (TEST_MODE && fixtureName) {
+    return normalizeOffshoreWaveFixture(await loadFixtureJson('waves', fixtureName), config);
+  }
+
+  const reading = await fetchNdbcWaveObservation(config);
+
+  return {
+    significantHeightM: reading.significantHeightM,
+    periodS: reading.periodS,
+    referenceDepthM: config.offshoreReferenceDepthM,
+    observationTime: reading.time,
+    sourceFetchTime: now.toISOString()
+  };
+}
+
+async function fetchNdbcWaveObservation(config) {
+  const proxyUrl = buildNdbcWavesProxyUrl(config);
+  if (proxyUrl) {
+    const res = await fetch(proxyUrl, {
+      headers: { Accept: 'application/json' }
+    });
+    if (!res.ok) throw new Error(isDefaultSameOriginApi(config.proxyUrl) ? 'Wave proxy route is not deployed' : 'Wave proxy failed');
+    const data = await res.json();
+    const reading = data.observation;
+    if (!Number.isFinite(reading?.significantHeightM) || !Number.isFinite(reading?.periodS)) {
+      throw new Error('No wave data in proxy response');
+    }
+    return reading;
+  }
+
+  const res = await fetch(`https://www.ndbc.noaa.gov/data/realtime2/${config.buoyStationId}.txt`);
+  if (!res.ok) throw new Error('Wave data failed');
+  const reading = parseNdbcWaveObservation(await res.text());
+  if (!reading) throw new Error('No wave data in buoy feed');
+  return reading;
+}
+
+function buildNdbcWavesProxyUrl(config) {
+  if (!config.proxyUrl) return null;
+  const url = new URL(config.proxyUrl, window.location.origin);
+  url.searchParams.set('station', config.buoyStationId);
+  return url.toString();
+}
+
+function isDefaultSameOriginApi(value) {
+  return String(value || '').startsWith('/api/');
+}
+
+function normalizeOffshoreWaveFixture(payload, config) {
+  return {
+    significantHeightM: Number(payload.significantHeightM ?? payload.waveHeightM),
+    periodS: Number(payload.periodS ?? payload.wavePeriodS),
+    referenceDepthM: Number(payload.referenceDepthM ?? config.offshoreReferenceDepthM),
+    observationTime: payload.observationTime || getAppNow().toISOString(),
+    sourceFetchTime: payload.sourceFetchTime || getAppNow().toISOString()
+  };
+}
+
+function parseNdbcWaveObservation(text) {
+  const lines = text.split('\n').map(line => line.trim()).filter(Boolean);
+  const headerLine = lines.find(line => line.startsWith('#YY') || line.startsWith('#yr'));
+  if (!headerLine) return null;
+
+  const columns = headerLine.replace(/^#/, '').trim().split(/\s+/);
+  const waveHeightIndex = columns.indexOf('WVHT');
+  const dominantPeriodIndex = columns.indexOf('DPD');
+  if (waveHeightIndex < 0 || dominantPeriodIndex < 0) return null;
+
+  for (const line of lines) {
+    if (line.startsWith('#')) continue;
+    const values = line.split(/\s+/);
+    const significantHeightM = Number.parseFloat(values[waveHeightIndex]);
+    const periodS = Number.parseFloat(values[dominantPeriodIndex]);
+    if (!Number.isFinite(significantHeightM) || !Number.isFinite(periodS)) continue;
+
+    const year = Number.parseInt(values[0], 10);
+    const month = Number.parseInt(values[1], 10);
+    const day = Number.parseInt(values[2], 10);
+    const hour = Number.parseInt(values[3], 10);
+    const minute = Number.parseInt(values[4], 10);
+
+    return {
+      significantHeightM,
+      periodS,
+      time: new Date(Date.UTC(year, month - 1, day, hour, minute)).toISOString()
+    };
+  }
+
+  return null;
+}
+
+async function fetchWaveModelTide(config, now) {
+  const beginDate = formatYmd(now);
+  const endDate = formatYmd(now);
+  const curveStation = config.tideStationId === '8532337' ? '8531680' : config.tideStationId;
+  const url = `https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?product=predictions&application=beach-app&begin_date=${beginDate}&end_date=${endDate}&datum=${config.tidePredictionDatum}&station=${curveStation}&time_zone=lst_ldt&interval=6&units=metric&format=json`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('Wave tide data failed');
+  const data = await res.json();
+  const predictions = curveStation !== config.tideStationId && config.tideStationId === '8532337'
+    ? transformReferenceCurveForBelmar(data.predictions || [])
+    : (data.predictions || []);
+  const tideHeightM = interpolatePredictionAtTime(predictions, now);
+  if (!Number.isFinite(tideHeightM)) throw new Error('No interpolated tide height');
+
+  return {
+    heightAbovePublishedDatumM: tideHeightM,
+    publishedDatum: config.tidePredictionDatum,
+    publishedDatumToLatOffsetM: config.publishedDatumToLatOffsetM,
+    evaluationTime: now.toISOString(),
+    sourceFetchTime: now.toISOString()
+  };
+}
+
+function interpolatePredictionAtTime(predictions, targetTime) {
+  const targetTimeMs = targetTime.getTime();
+  const parsed = predictions
+    .map(prediction => ({
+      timeMs: new Date(prediction.t).getTime(),
+      heightM: Number.parseFloat(prediction.v)
+    }))
+    .filter(prediction => Number.isFinite(prediction.timeMs) && Number.isFinite(prediction.heightM))
+    .sort((a, b) => a.timeMs - b.timeMs);
+
+  const before = [...parsed].reverse().find(prediction => prediction.timeMs <= targetTimeMs);
+  const after = parsed.find(prediction => prediction.timeMs >= targetTimeMs);
+  if (!before || !after) return null;
+  if (before.timeMs === after.timeMs) return before.heightM;
+
+  return interpolateTideHeight({
+    beforeTimeMs: before.timeMs,
+    beforeHeightM: before.heightM,
+    afterTimeMs: after.timeMs,
+    afterHeightM: after.heightM,
+    targetTimeMs
+  });
+}
+
+function estimateNearshoreBreaking({ locationId, locationConfig, offshoreWave, tide, now = getAppNow() }) {
+  if (!locationConfig?.enabled) return { status: WAVE_MODEL_STATUS.DISABLED };
+
+  const validationStatus = validateWaveModelInputs({ locationConfig, offshoreWave, tide, now });
+  if (validationStatus) return { status: validationStatus };
+
+  try {
+    const tideDatum = convertTideToModelDatum({
+      heightAbovePublishedDatumM: tide.heightAbovePublishedDatumM,
+      publishedDatum: tide.publishedDatum,
+      publishedDatumToLatOffsetM: tide.publishedDatumToLatOffsetM,
+      modelDatum: locationConfig.profileDatum,
+      allowApproximateDatum: locationConfig.allowApproximateDatum
+    });
+
+    if (tideDatum.tideAboveLatM < 0) {
+      return {
+        status: WAVE_MODEL_STATUS.UNSUPPORTED_BELOW_LAT_GEOMETRY,
+        metadata: tideDatum
+      };
+    }
+
+    const offshoreProperties = solveWaveNumber({
+      periodS: offshoreWave.periodS,
+      depthM: offshoreWave.referenceDepthM
+    });
+    if (!offshoreProperties.converged) return { status: WAVE_MODEL_STATUS.DISPERSION_FAILED };
+
+    const search = findBreakingPoint({
+      locationConfig,
+      offshoreWave,
+      offshoreGroupVelocityMps: offshoreProperties.groupVelocityMps,
+      tideAboveLatM: tideDatum.tideAboveLatM
+    });
+    if (search.status !== WAVE_MODEL_STATUS.OK) {
+      return {
+        status: search.status,
+        inputs: buildWaveModelInputs(locationConfig, offshoreWave, tideDatum.tideAboveLatM),
+        metadata: buildWaveModelMetadata({ locationConfig, offshoreWave, tide, tideDatum, now })
+      };
+    }
+
+    const currentWaterlineXM = calculateCurrentWaterlineXM({
+      tideAboveLatM: tideDatum.tideAboveLatM,
+      landwardSlope: locationConfig.landwardSlope
+    });
+    const breakPointXM = calculateBreakPointXM({
+      breakingDepthM: search.point.localDepthM,
+      tideAboveLatM: tideDatum.tideAboveLatM,
+      offshoreSlope: locationConfig.offshoreSlope
+    });
+
+    if (search.point.localDepthM <= tideDatum.tideAboveLatM) {
+      return {
+        status: WAVE_MODEL_STATUS.BREAKING_CONTOUR_LANDWARD_OF_LAT,
+        inputs: buildWaveModelInputs(locationConfig, offshoreWave, tideDatum.tideAboveLatM),
+        metadata: buildWaveModelMetadata({ locationConfig, offshoreWave, tide, tideDatum, now })
+      };
+    }
+
+    return {
+      status: WAVE_MODEL_STATUS.OK,
+      locationId,
+      inputs: buildWaveModelInputs(locationConfig, offshoreWave, tideDatum.tideAboveLatM),
+      breaking: {
+        distanceFromLatShorelineM: breakPointXM,
+        distanceFromCurrentWaterlineM: calculateBreakDistanceFromWaterlineM({
+          breakPointXM,
+          currentWaterlineXM
+        }),
+        localDepthM: search.point.localDepthM,
+        latBedDepthM: getLatDepthM({
+          xM: breakPointXM,
+          offshoreSlope: locationConfig.offshoreSlope
+        }),
+        waveHeightM: search.point.localWaveHeightM,
+        wavelengthM: search.point.wavelengthM,
+        governingCriterion: search.point.governingCriterion,
+        depthLimitedMaxHeightM: search.point.depthLimitedMaxHeightM,
+        micheMaxHeightM: search.point.micheMaxHeightM
+      },
+      shoreline: {
+        latReferenceXM: 0,
+        currentWaterlineXM,
+        currentWaterlineLandwardDistanceM: Math.max(0, -currentWaterlineXM)
+      },
+      metadata: buildWaveModelMetadata({ locationConfig, offshoreWave, tide, tideDatum, now })
+    };
+  } catch (error) {
+    console.warn('Wave model calculation failed', error);
+    return { status: WAVE_MODEL_STATUS.INVALID_INPUT };
+  }
+}
+
+function validateWaveModelInputs({ locationConfig, offshoreWave, tide, now }) {
+  if (!Number.isFinite(offshoreWave?.significantHeightM)) return WAVE_MODEL_STATUS.MISSING_WAVE_HEIGHT;
+  if (!Number.isFinite(offshoreWave?.periodS)) return WAVE_MODEL_STATUS.MISSING_WAVE_PERIOD;
+  if (!Number.isFinite(offshoreWave?.referenceDepthM)) return WAVE_MODEL_STATUS.MISSING_REFERENCE_DEPTH;
+  if (!Number.isFinite(tide?.heightAbovePublishedDatumM)) return WAVE_MODEL_STATUS.MISSING_TIDE;
+  if (!Number.isFinite(tide?.publishedDatumToLatOffsetM) && !locationConfig.allowApproximateDatum) {
+    return WAVE_MODEL_STATUS.MISSING_TIDE;
+  }
+
+  if (
+    offshoreWave.significantHeightM < WAVE_MODEL_LIMITS.minWaveHeightM
+    || offshoreWave.significantHeightM > WAVE_MODEL_LIMITS.maxWaveHeightM
+    || offshoreWave.periodS < WAVE_MODEL_LIMITS.minWavePeriodS
+    || offshoreWave.periodS > WAVE_MODEL_LIMITS.maxWavePeriodS
+    || offshoreWave.referenceDepthM < WAVE_MODEL_LIMITS.minReferenceDepthM
+    || offshoreWave.referenceDepthM > WAVE_MODEL_LIMITS.maxReferenceDepthM
+    || locationConfig.offshoreSlope <= 0
+    || locationConfig.landwardSlope <= 0
+    || locationConfig.maxProfileDepthM <= 0
+    || locationConfig.breakerIndexGamma <= 0
+  ) {
+    return WAVE_MODEL_STATUS.INVALID_INPUT;
+  }
+
+  if (isStale(offshoreWave.observationTime, now, WAVE_MODEL_LIMITS.waveDataMaxAgeMinutes)) {
+    return WAVE_MODEL_STATUS.STALE_WAVE_DATA;
+  }
+
+  if (isStale(tide.evaluationTime, now, WAVE_MODEL_LIMITS.tideDataMaxAgeMinutes)) {
+    return WAVE_MODEL_STATUS.STALE_TIDE_DATA;
+  }
+
+  return null;
+}
+
+function isStale(timeValue, now, maxAgeMinutes) {
+  const time = new Date(timeValue);
+  if (Number.isNaN(time.getTime())) return true;
+  return Math.abs(now.getTime() - time.getTime()) > maxAgeMinutes * 60 * 1000;
+}
+
+function convertTideToModelDatum({
+  heightAbovePublishedDatumM,
+  publishedDatum,
+  publishedDatumToLatOffsetM,
+  modelDatum,
+  allowApproximateDatum
+}) {
+  const hasOffset = Number.isFinite(publishedDatumToLatOffsetM);
+  const tideAboveLatM = hasOffset
+    ? heightAbovePublishedDatumM + publishedDatumToLatOffsetM
+    : heightAbovePublishedDatumM;
+
+  return {
+    tideAboveLatM,
+    tideSourceDatum: publishedDatum,
+    modelDatum,
+    datumOffsetM: hasOffset ? publishedDatumToLatOffsetM : null,
+    datumConversionApplied: hasOffset,
+    datumApproximate: !hasOffset && Boolean(allowApproximateDatum)
+  };
+}
+
+function buildWaveModelInputs(locationConfig, offshoreWave, tideAboveLatM) {
+  return {
+    offshoreWaveHeightM: offshoreWave.significantHeightM,
+    wavePeriodS: offshoreWave.periodS,
+    offshoreReferenceDepthM: offshoreWave.referenceDepthM,
+    tideAboveLatM,
+    offshoreSlope: locationConfig.offshoreSlope,
+    landwardSlope: locationConfig.landwardSlope,
+    breakerIndexGamma: locationConfig.breakerIndexGamma
+  };
+}
+
+function buildWaveModelMetadata({ locationConfig, offshoreWave, tide, tideDatum, now }) {
+  return {
+    calculationTime: now.toISOString(),
+    waveObservationTime: offshoreWave.observationTime,
+    tideEvaluationTime: tide.evaluationTime,
+    tideSourceDatum: tideDatum.tideSourceDatum,
+    modelDatum: tideDatum.modelDatum,
+    datumOffsetM: tideDatum.datumOffsetM,
+    datumConversionApplied: tideDatum.datumConversionApplied,
+    approximate: tideDatum.datumApproximate,
+    assumptions: [
+      `uniform 1:${Math.round(1 / locationConfig.offshoreSlope)} submerged profile`,
+      `uniform 1:${Math.round(1 / locationConfig.landwardSlope)} exposed beach face`,
+      'shore-normal waves',
+      'no refraction',
+      'no bottom friction before breaking',
+      'linear shoaling before breaking'
+    ]
+  };
+}
+
+function findBreakingPoint({ locationConfig, offshoreWave, offshoreGroupVelocityMps, tideAboveLatM }) {
+  const maxDistanceOffshoreM = locationConfig.maxProfileDepthM / locationConfig.offshoreSlope;
+  const stepM = locationConfig.profileStepM || 1;
+  let previous = null;
+
+  for (let xM = maxDistanceOffshoreM; xM >= 0; xM -= stepM) {
+    const point = calculateWaveProfilePoint({
+      xM,
+      locationConfig,
+      offshoreWave,
+      offshoreGroupVelocityMps,
+      tideAboveLatM
+    });
+    if (!point) continue;
+
+    if (xM === maxDistanceOffshoreM && point.thresholdMarginM <= 0) {
+      return { status: WAVE_MODEL_STATUS.ALREADY_BREAKING_AT_OFFSHORE_BOUNDARY };
+    }
+
+    if (previous && previous.thresholdMarginM > 0 && point.thresholdMarginM <= 0) {
+      return {
+        status: WAVE_MODEL_STATUS.OK,
+        point: refineBreakingPoint({
+          offshorePoint: previous,
+          shorewardPoint: point,
+          locationConfig,
+          offshoreWave,
+          offshoreGroupVelocityMps,
+          tideAboveLatM
+        })
+      };
+    }
+
+    previous = point;
+  }
+
+  return { status: WAVE_MODEL_STATUS.NO_BREAKING_WITHIN_PROFILE };
+}
+
+function refineBreakingPoint({
+  offshorePoint,
+  shorewardPoint,
+  locationConfig,
+  offshoreWave,
+  offshoreGroupVelocityMps,
+  tideAboveLatM
+}) {
+  let high = offshorePoint;
+  let low = shorewardPoint;
+  const toleranceM = locationConfig.breakDistanceToleranceM || 0.1;
+
+  for (let i = 0; i < 60 && Math.abs(high.xM - low.xM) > toleranceM; i += 1) {
+    const midX = (high.xM + low.xM) / 2;
+    const mid = calculateWaveProfilePoint({
+      xM: midX,
+      locationConfig,
+      offshoreWave,
+      offshoreGroupVelocityMps,
+      tideAboveLatM
+    });
+
+    if (!mid) break;
+    if (mid.thresholdMarginM > 0) {
+      high = mid;
+    } else {
+      low = mid;
+    }
+  }
+
+  return low;
+}
+
+function calculateWaveProfilePoint({ xM, locationConfig, offshoreWave, offshoreGroupVelocityMps, tideAboveLatM }) {
+  const localDepthM = getCurrentOffshoreDepthM({
+    xM,
+    tideAboveLatM,
+    offshoreSlope: locationConfig.offshoreSlope
+  });
+  if (localDepthM <= 0) return null;
+
+  const waveProperties = solveWaveNumber({
+    periodS: offshoreWave.periodS,
+    depthM: localDepthM
+  });
+  if (!waveProperties.converged) throw new Error('Dispersion did not converge');
+
+  const localWaveHeightM = calculateShoaledWaveHeightM({
+    offshoreWaveHeightM: offshoreWave.significantHeightM,
+    offshoreGroupVelocityMps,
+    localGroupVelocityMps: waveProperties.groupVelocityMps
+  });
+  const limits = calculateBreakingLimits({
+    localWaveHeightM,
+    localDepthM,
+    wavelengthM: waveProperties.wavelengthM,
+    waveNumberRadPerM: waveProperties.waveNumberRadPerM,
+    gamma: locationConfig.breakerIndexGamma
+  });
+
+  return {
+    xM,
+    localDepthM,
+    localWaveHeightM,
+    wavelengthM: waveProperties.wavelengthM,
+    ...limits
+  };
+}
+
+function getLatDepthM({ xM, offshoreSlope }) {
+  if (xM < 0) throw new RangeError('LAT offshore depth requires x >= 0');
+  return xM * offshoreSlope;
+}
+
+function getBedElevationRelativeToLatM({ xM, offshoreSlope, landwardSlope }) {
+  return -(xM >= 0 ? offshoreSlope : landwardSlope) * xM;
+}
+
+function getCurrentOffshoreDepthM({ xM, tideAboveLatM, offshoreSlope }) {
+  if (xM < 0) throw new RangeError('Offshore depth calculation requires x >= 0');
+  return xM * offshoreSlope + tideAboveLatM;
+}
+
+function calculateCurrentWaterlineXM({ tideAboveLatM, landwardSlope }) {
+  if (landwardSlope <= 0) throw new RangeError('Landward slope must be positive');
+  return -tideAboveLatM / landwardSlope;
+}
+
+function calculateBreakPointXM({ breakingDepthM, tideAboveLatM, offshoreSlope }) {
+  if (offshoreSlope <= 0) throw new RangeError('Offshore slope must be positive');
+  return (breakingDepthM - tideAboveLatM) / offshoreSlope;
+}
+
+function calculateBreakDistanceFromWaterlineM({ breakPointXM, currentWaterlineXM }) {
+  return breakPointXM - currentWaterlineXM;
+}
+
+function solveWaveNumber({ periodS, depthM, gravityMps2 = GRAVITY_MPS2 }) {
+  if (periodS <= 0 || depthM <= 0) throw new RangeError('Wave period and depth must be positive');
+
+  const omega = TWO_PI / periodS;
+  let k = omega * omega / gravityMps2;
+  const shallowEstimate = omega / Math.sqrt(gravityMps2 * depthM);
+  if (k * depthM < 1) k = shallowEstimate;
+
+  const maxIterations = 50;
+  const relativeTolerance = 1e-10;
+  const absoluteTolerance = 1e-12;
+  let converged = false;
+  let iterations = 0;
+
+  for (; iterations < maxIterations; iterations += 1) {
+    const kh = k * depthM;
+    const tanhKh = Math.tanh(kh);
+    const sechSquaredKh = 1 / Math.cosh(Math.min(kh, 350)) ** 2;
+    const f = gravityMps2 * k * tanhKh - omega * omega;
+    const df = gravityMps2 * tanhKh + gravityMps2 * k * depthM * sechSquaredKh;
+    if (!Number.isFinite(f) || !Number.isFinite(df) || df === 0) break;
+
+    const nextK = k - f / df;
+    if (!Number.isFinite(nextK) || nextK <= 0) break;
+
+    if (Math.abs(nextK - k) <= Math.max(absoluteTolerance, relativeTolerance * Math.abs(k))) {
+      k = nextK;
+      converged = true;
+      break;
+    }
+
+    k = nextK;
+  }
+
+  const kh = k * depthM;
+  const wavelengthM = TWO_PI / k;
+  const phaseVelocityMps = omega / k;
+  const groupTerm = 2 * kh > 350 ? 0 : (2 * kh) / Math.sinh(2 * kh);
+  const groupCoefficient = 0.5 * (1 + groupTerm);
+  const groupVelocityMps = groupCoefficient * phaseVelocityMps;
+
+  return {
+    waveNumberRadPerM: k,
+    wavelengthM,
+    phaseVelocityMps,
+    groupCoefficient,
+    groupVelocityMps,
+    kh,
+    iterations: iterations + 1,
+    converged: converged && [k, wavelengthM, phaseVelocityMps, groupCoefficient, groupVelocityMps].every(Number.isFinite)
+  };
+}
+
+function calculateShoaledWaveHeightM({ offshoreWaveHeightM, offshoreGroupVelocityMps, localGroupVelocityMps }) {
+  if (offshoreWaveHeightM <= 0 || offshoreGroupVelocityMps <= 0 || localGroupVelocityMps <= 0) {
+    throw new RangeError('Invalid shoaling inputs');
+  }
+
+  return offshoreWaveHeightM * Math.sqrt(offshoreGroupVelocityMps / localGroupVelocityMps);
+}
+
+function calculateBreakingLimits({ localWaveHeightM, localDepthM, wavelengthM, waveNumberRadPerM, gamma }) {
+  const depthLimitedMaxHeightM = gamma * localDepthM;
+  const micheMaxHeightM = 0.142 * wavelengthM * Math.tanh(waveNumberRadPerM * localDepthM);
+  const governingMaxHeightM = Math.min(depthLimitedMaxHeightM, micheMaxHeightM);
+
+  return {
+    depthLimitedMaxHeightM,
+    micheMaxHeightM,
+    governingMaxHeightM,
+    governingCriterion: depthLimitedMaxHeightM <= micheMaxHeightM ? 'depth' : 'steepness',
+    thresholdMarginM: governingMaxHeightM - localWaveHeightM
+  };
+}
+
+function interpolateTideHeight({ beforeTimeMs, beforeHeightM, afterTimeMs, afterHeightM, targetTimeMs }) {
+  if (afterTimeMs <= beforeTimeMs) throw new RangeError('Tide interpolation times are invalid');
+  const fraction = (targetTimeMs - beforeTimeMs) / (afterTimeMs - beforeTimeMs);
+  return beforeHeightM + fraction * (afterHeightM - beforeHeightM);
+}
+
+function metersToFeet(m) {
+  return m * 3.280839895;
+}
+
+function feetToMeters(ft) {
+  return ft / 3.280839895;
+}
+
+function metersToYards(m) {
+  return m * 1.093613298;
+}
+
+function formatFeet(m) {
+  return `${roundToNearest(metersToFeet(m), 0.1).toFixed(1)} ft`;
+}
+
+function roundToNearest(value, increment) {
+  return Math.round(value / increment) * increment;
 }
 
 async function fetchWaterTempSource(source) {

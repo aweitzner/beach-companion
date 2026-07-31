@@ -1,5 +1,7 @@
 {
   "scripts": {
+    "test:wave-model": "node tests/wave-model.test.mjs",
+    "deploy:ndbc-waves": "wrangler deploy --config wrangler.ndbc-waves.toml",
     "deploy:maine-water-quality": "wrangler deploy"
   },
   "devDependencies": {

@@ -10,7 +10,7 @@
   <title>Beach Companion</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="icon-180.png" />
-  <link rel="stylesheet" href="style.css?v=1.5.40" />
+  <link rel="stylesheet" href="style.css?v=1.5.43" />
 </head>
 <body>
   <main class="app">
@@ -61,6 +61,15 @@
             <div id="waterTemp" class="value">--</div>
           </div>
         </div>
+        <div class="ocean-detail-list">
+          <div class="ocean-detail"><span>Offshore Waves</span><strong id="offshoreWaves">--</strong></div>
+          <div class="ocean-detail"><span>Est. Breakers</span><strong id="estimatedBreakers">--</strong></div>
+          <div class="ocean-detail"><span>Break Point</span><strong id="breakPoint">--</strong></div>
+        </div>
+        <details id="waveModelDetails" class="wave-model-details" hidden>
+          <summary>Model details</summary>
+          <div id="waveModelDetailText"></div>
+        </details>
         <div class="updated" id="waterUpdated"></div>
       </article>
     </section>
@@ -121,6 +130,6 @@
   </main>
 
   <script src="astronomy.browser.min.js?v=1.5.36"></script>
-  <script src="app.js?v=1.5.40"></script>
+  <script src="app.js?v=1.5.43"></script>
 </body>
 </html>
