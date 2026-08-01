@@ -1,4 +1,4 @@
-const APP_VERSION = 'v1.5.43';
+const APP_VERSION = 'v1.5.45';
 const queryParams = new URLSearchParams(window.location.search);
 const MAINE_WATER_QUALITY_PROXY_URL = queryParams.get('mhbProxyUrl') || '/api/water-quality/maine';
 const NDBC_WAVES_PROXY_URL = queryParams.get('wavesProxyUrl') || 'https://beach-companion-ndbc-waves.a-weitzner.workers.dev';
@@ -660,6 +660,55 @@ function getPrecipitationNotePriority(severity) {
   }[severity] || 4;
 }
 
+function breakfastNote(beach, date = getAppNow()) {
+  if (!isSameLocalDay(date, getAppNow())) return null;
+
+  const now = getAppNow();
+  if (now.getHours() >= 10) return null;
+
+  const day = now.getDay();
+  if (day === 5) {
+    return {
+      text: 'Dunkin Donuts day',
+      priority: 9
+    };
+  }
+
+  if (day === 6) {
+    return {
+      text: 'Bagel day',
+      priority: 9
+    };
+  }
+
+  if (isNewJerseyBeach(beach) && shouldShowPorkRollNote(beach, now)) {
+    return {
+      text: 'Pork roll, egg & cheese?',
+      priority: 9
+    };
+  }
+
+  return null;
+}
+
+function isNewJerseyBeach(beach) {
+  return String(beach?.displayName || '').endsWith(', NJ');
+}
+
+function shouldShowPorkRollNote(beach, date) {
+  const key = `${beach?.id || 'beach'}-${getLocalDateKey(date)}`;
+  return hashStringToUnitInterval(key) < 0.14;
+}
+
+function hashStringToUnitInterval(value) {
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0) / 4294967296;
+}
+
 function renderNotes(notes) {
   if (!notes || notes.length === 0) {
     notesListEl.innerHTML = '<li>No special notes</li>';
@@ -680,7 +729,8 @@ function buildBeachNotes(data) {
     precipitation,
     sealNote(data.beach, data.current, precipitation, data.date),
     clothingNote(data.date, data.range, data.strongestWindSpeed, data.hourly),
-    fullMoonRiseNote(data.astronomy)
+    fullMoonRiseNote(data.astronomy),
+    breakfastNote(data.beach, data.date)
   ]
     .flatMap(note => Array.isArray(note) ? note : [note])
     .filter(Boolean)
@@ -3308,53 +3358,81 @@ function renderWaterQualityUnavailable(message) {
 function renderWaterQualityCard(beach, waterQuality) {
   if (!waterQualityCardEl || !waterQualityStatusEl || !waterQualityDetailsEl) return;
 
-  const waterCount = waterQuality.counts?.['water-quality'];
-  const incidentCount = waterQuality.counts?.incident;
   const problemLocations = (waterQuality.locations || []).filter(location =>
     location.activeIncident || location.latestElevatedSample
   );
   const statusText = problemLocations.length
-    ? problemLocations.map(location => `${location.label}: ${getWaterQualityLocationStatusText(location)}`).join(' · ')
-    : 'No active water quality advisory or closure for the monitored locations.';
+    ? `${problemLocations.length} monitored ${problemLocations.length === 1 ? 'area needs' : 'areas need'} attention`
+    : 'All monitored areas look OK.';
 
   waterQualityStatusEl.textContent = statusText;
 
   waterQualityDetailsEl.innerHTML = [
-    ...(waterQuality.locations || []).map(renderWaterQualityLocation),
-    waterQuality.detailNote ? renderWaterQualityDetail('Detail note', waterQuality.detailNote) : null,
-    Number.isFinite(waterCount) || Number.isFinite(incidentCount)
-      ? renderWaterQualityDetail('Query count', `${Number.isFinite(waterCount) ? waterCount : 0} samples · ${Number.isFinite(incidentCount) ? incidentCount : 0} incidents`)
-      : null,
-    renderWaterQualityDetail('Source', waterQuality.sourceLabel)
+    ...(waterQuality.locations || []).map(renderWaterQualitySummaryLocation),
+    renderWaterQualitySummaryFooter(waterQuality)
   ].filter(Boolean).join('');
 }
 
-function renderWaterQualityLocation(location) {
-  const latest = location.latestSample;
-  const activeIncident = location.activeIncident;
+function renderWaterQualitySummaryLocation(location) {
+  const statusText = getWaterQualityLocationStatusText(location);
+  const issueText = getWaterQualityIssueText(location);
 
   return `
-    <section class="water-quality-location">
-      <h3>${escapeHtml(location.label)}</h3>
-      ${renderWaterQualityDetail('Status', getWaterQualityLocationStatusText(location))}
-      ${latest ? renderWaterQualityDetail('Latest sample', `${latest.beachName || latest.stationName} · ${formatShortDate(latest.date)} ${latest.timeLabel || ''}`) : renderWaterQualityDetail('Latest sample', 'No recent sample in query window')}
-      ${latest ? renderWaterQualityDetail('Enterococcus', `${latest.value} ${latest.units || 'CFU/100mL'}`) : ''}
-      ${latest ? renderWaterQualityDetail('Station', `${latest.stationName || '--'} · ${latest.locationType || '--'}`) : ''}
-      ${activeIncident ? renderWaterQualityDetail('Incident', `${activeIncident.rawType || activeIncident.type} · ${activeIncident.reason || 'Water quality'}`) : ''}
-      ${location.thirtyDayGeometricMean ? renderWaterQualityDetail('30-day geometric mean', `${location.thirtyDayGeometricMean.value} CFU/100mL · ${location.thirtyDayGeometricMean.label}`) : ''}
-      ${location.geometricMean ? renderWaterQualityDetail('YTD geometric mean', `${location.geometricMean.value} CFU/100mL · ${location.geometricMean.label}`) : ''}
-      ${location.beachNames.length ? renderWaterQualityDetail('Monitored beaches', location.beachNames.join(', ')) : ''}
+    <section class="water-quality-location ${getWaterQualityStatusClass(location)}">
+      <div class="water-quality-row">
+        <h3>${escapeHtml(location.label)}</h3>
+        <strong>${escapeHtml(statusText)}</strong>
+      </div>
+      ${issueText ? `<div class="water-quality-issue">${escapeHtml(issueText)}</div>` : ''}
     </section>
   `;
+}
+
+function renderWaterQualitySummaryFooter(waterQuality) {
+  const latestDate = getLatestWaterQualitySampleDate(waterQuality.locations || []);
+  const parts = [
+    latestDate ? `Latest sample ${formatShortDate(latestDate)}` : null,
+    waterQuality.sourceLabel ? `Source: ${waterQuality.sourceLabel}` : null
+  ].filter(Boolean);
+
+  return parts.length ? `<div class="water-quality-footer">${escapeHtml(parts.join(' · '))}</div>` : '';
+}
+
+function getWaterQualityIssueText(location) {
+  const activeIncident = location.activeIncident;
+  if (activeIncident) {
+    return activeIncident.reason || activeIncident.rawType || getWaterQualityLocationStatusText(location);
+  }
+
+  if (location.latestElevatedSample) {
+    return 'Elevated bacteria sample';
+  }
+
+  return '';
+}
+
+function getWaterQualityStatusClass(location) {
+  if (location.activeIncident?.type === 'CLOSURE') return 'is-closed';
+  if (location.activeIncident || location.latestElevatedSample) return 'has-issue';
+  return 'is-ok';
+}
+
+function getLatestWaterQualitySampleDate(locations) {
+  return locations
+    .map(location => location.latestSample?.date)
+    .filter(Boolean)
+    .map(value => new Date(value))
+    .filter(date => !Number.isNaN(date.getTime()))
+    .sort((a, b) => b - a)[0] || null;
 }
 
 function getWaterQualityLocationStatusText(location) {
   if (location.activeIncident?.type === 'CLOSURE') return 'Closed';
   if (location.activeIncident?.type === 'ADVISORY') return 'Advisory';
-  if (location.activeIncident?.type === 'RESAMPLING') return 'Resampling underway';
+  if (location.activeIncident?.type === 'RESAMPLING') return 'Resampling';
   if (location.activeIncident?.type === 'RAINFALL') return 'Rainfall advisory';
-  if (location.latestElevatedSample) return 'Elevated bacteria sample';
-  return 'No active advisory';
+  if (location.latestElevatedSample) return 'Elevated';
+  return 'OK';
 }
 
 function getWaterQualityProviderLabel(source) {

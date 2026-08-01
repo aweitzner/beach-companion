@@ -305,9 +305,6 @@ select, .button {
   color: var(--muted);
   font-size: 0.88rem;
 }
-.water-quality-card {
-  border-style: dashed;
-}
 .water-quality-status {
   font-weight: 700;
   color: var(--accent-2);
@@ -319,15 +316,52 @@ select, .button {
 }
 .water-quality-location {
   display: grid;
-  gap: 8px;
-  padding: 12px;
+  gap: 6px;
+  padding: 10px 12px;
   border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  background: #ffffff;
+  border-radius: 10px;
+  background: #f8fafc;
 }
-.water-quality-location h3 {
+.water-quality-location.is-ok {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+.water-quality-location.has-issue {
+  border-color: #fde68a;
+  background: #fffbeb;
+}
+.water-quality-location.is-closed {
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+.water-quality-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.water-quality-row h3 {
   margin: 0;
   font-size: 1rem;
+}
+.water-quality-row strong {
+  flex: 0 0 auto;
+  color: var(--accent-2);
+}
+.water-quality-location.has-issue .water-quality-row strong {
+  color: #92400e;
+}
+.water-quality-location.is-closed .water-quality-row strong {
+  color: #b91c1c;
+}
+.water-quality-issue,
+.water-quality-footer {
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+.water-quality-footer {
+  margin-top: 2px;
 }
 .water-quality-detail {
   display: flex;
