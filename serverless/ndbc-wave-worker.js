@@ -1,5 +1,25 @@
 const CACHE_SECONDS = 600;
 const SUPPORTED_STATIONS = Object.freeze({
+  '44007': Object.freeze({
+    stationId: '44007',
+    label: 'NDBC 44007',
+    sourceUrl: 'https://www.ndbc.noaa.gov/station_page.php?station=44007'
+  }),
+  '44009': Object.freeze({
+    stationId: '44009',
+    label: 'NDBC 44009',
+    sourceUrl: 'https://www.ndbc.noaa.gov/station_page.php?station=44009'
+  }),
+  '44033': Object.freeze({
+    stationId: '44033',
+    label: 'NDBC 44033',
+    sourceUrl: 'https://www.ndbc.noaa.gov/station_page.php?station=44033'
+  }),
+  '44065': Object.freeze({
+    stationId: '44065',
+    label: 'NDBC 44065',
+    sourceUrl: 'https://www.ndbc.noaa.gov/station_page.php?station=44065'
+  }),
   '44091': Object.freeze({
     stationId: '44091',
     label: 'NDBC 44091',

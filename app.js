@@ -1,4 +1,4 @@
-const APP_VERSION = 'v1.5.45';
+const APP_VERSION = 'v1.5.46';
 const queryParams = new URLSearchParams(window.location.search);
 const MAINE_WATER_QUALITY_PROXY_URL = queryParams.get('mhbProxyUrl') || '/api/water-quality/maine';
 const NDBC_WAVES_PROXY_URL = queryParams.get('wavesProxyUrl') || 'https://beach-companion-ndbc-waves.a-weitzner.workers.dev';
@@ -78,11 +78,35 @@ const WAVE_MODEL_LIMITS = Object.freeze({
   waveDataMaxAgeMinutes: 90,
   tideDataMaxAgeMinutes: 30
 });
-const WAVE_MODEL_CONFIG = Object.freeze({
+const WAVE_LOCATION_CONFIG = Object.freeze({
+  sandy_hook: Object.freeze({
+    enabled: true,
+    profileType: 'dean',
+    profileDatum: 'LAT',
+    nativeD50Mm: 0.36,
+    d50Basis: 'Representative native/pre-nourishment Sandy Hook samples',
+    d50Confidence: 'accepted-initial',
+    landwardSlope: 1 / 5,
+    maxProfileDepthM: 4.0,
+    breakerIndexGamma: 0.55,
+    tideStationId: '8531680',
+    tidePredictionDatum: 'MLLW',
+    publishedDatumToLatOffsetM: null,
+    allowApproximateDatum: true,
+    buoyStationId: '44065',
+    proxyUrl: NDBC_WAVES_PROXY_URL,
+    offshoreReferenceDepthM: 15,
+    shoreNormalDegrees: null,
+    profileStepM: 1.0,
+    breakDistanceToleranceM: 0.1
+  }),
   belmar: Object.freeze({
     enabled: true,
+    profileType: 'dean',
     profileDatum: 'LAT',
-    offshoreSlope: 1 / 50,
+    nativeD50Mm: 0.414,
+    d50Basis: '1950 native Belmar measurement',
+    d50Confidence: 'accepted-initial',
     landwardSlope: 1 / 5,
     maxProfileDepthM: 4.0,
     breakerIndexGamma: 0.55,
@@ -96,6 +120,105 @@ const WAVE_MODEL_CONFIG = Object.freeze({
     shoreNormalDegrees: null,
     profileStepM: 1.0,
     breakDistanceToleranceM: 0.1
+  }),
+  asbury_park: Object.freeze({
+    enabled: true,
+    profileType: 'dean',
+    profileDatum: 'LAT',
+    nativeD50Mm: 0.438,
+    d50Basis: '1950 native Asbury Park measurement',
+    d50Confidence: 'accepted-initial',
+    landwardSlope: 1 / 5,
+    maxProfileDepthM: 4.0,
+    breakerIndexGamma: 0.55,
+    tideStationId: '8532337',
+    tidePredictionDatum: 'MLLW',
+    publishedDatumToLatOffsetM: null,
+    allowApproximateDatum: true,
+    buoyStationId: '44091',
+    proxyUrl: NDBC_WAVES_PROXY_URL,
+    offshoreReferenceDepthM: 25,
+    shoreNormalDegrees: null,
+    profileStepM: 1.0,
+    breakDistanceToleranceM: 0.1
+  }),
+  cape_may: Object.freeze({
+    enabled: true,
+    profileType: null,
+    profileDatum: 'LAT',
+    nativeD50Mm: null,
+    landwardSlope: 1 / 5,
+    maxProfileDepthM: 4.0,
+    breakerIndexGamma: 0.55,
+    tideStationId: '8536110',
+    tidePredictionDatum: 'MLLW',
+    publishedDatumToLatOffsetM: null,
+    allowApproximateDatum: true,
+    buoyStationId: '44009',
+    proxyUrl: NDBC_WAVES_PROXY_URL,
+    offshoreReferenceDepthM: 24,
+    shoreNormalDegrees: null,
+    profileStepM: 1.0,
+    breakDistanceToleranceM: 0.1
+  }),
+  bar_harbor: Object.freeze({
+    enabled: true,
+    profileType: null,
+    profileDatum: 'LAT',
+    nativeD50Mm: null,
+    landwardSlope: 1 / 5,
+    maxProfileDepthM: 4.0,
+    breakerIndexGamma: 0.55,
+    tideStationId: '8413320',
+    tidePredictionDatum: 'MLLW',
+    publishedDatumToLatOffsetM: null,
+    allowApproximateDatum: true,
+    buoyStationId: '44033',
+    proxyUrl: NDBC_WAVES_PROXY_URL,
+    offshoreReferenceDepthM: 30,
+    shoreNormalDegrees: null,
+    profileStepM: 1.0,
+    breakDistanceToleranceM: 0.1
+  }),
+  kennebunkport: Object.freeze({
+    enabled: true,
+    profileType: null,
+    profileDatum: 'LAT',
+    nativeD50Mm: null,
+    landwardSlope: 1 / 5,
+    maxProfileDepthM: 4.0,
+    breakerIndexGamma: 0.55,
+    tideStationId: '8418150',
+    tidePredictionDatum: 'MLLW',
+    publishedDatumToLatOffsetM: null,
+    allowApproximateDatum: true,
+    buoyStationId: '44007',
+    proxyUrl: NDBC_WAVES_PROXY_URL,
+    offshoreReferenceDepthM: 49,
+    shoreNormalDegrees: null,
+    profileStepM: 1.0,
+    breakDistanceToleranceM: 0.1
+  }),
+  lewes: Object.freeze({
+    enabled: true,
+    profileType: 'dean',
+    profileDatum: 'LAT',
+    nativeD50Mm: 0.45,
+    d50Basis: 'Best currently available representative Lewes value',
+    d50Confidence: 'accepted-initial',
+    landwardSlope: 1 / 5,
+    maxProfileDepthM: 4.0,
+    breakerIndexGamma: 0.55,
+    tideStationId: '8557380',
+    tidePredictionDatum: 'MLLW',
+    publishedDatumToLatOffsetM: null,
+    allowApproximateDatum: true,
+    buoyStationId: '44009',
+    proxyUrl: NDBC_WAVES_PROXY_URL,
+    offshoreReferenceDepthM: 24,
+    shoreNormalDegrees: null,
+    profileStepM: 1.0,
+    breakDistanceToleranceM: 0.1
   })
 });
 const BEACHES = [
@@ -105,6 +228,7 @@ const BEACHES = [
     lat: 40.4668,
     lon: -74.0093,
     tideStationId: '8531680',
+    waveModelConfigId: 'sandy_hook',
     waterTempSource: Object.freeze({
       provider: 'coops',
       stationId: '8531680',
@@ -191,6 +315,7 @@ const BEACHES = [
     lat: 40.2204,
     lon: -73.9982,
     tideStationId: '8532337',
+    waveModelConfigId: 'asbury_park',
     waterTempSource: Object.freeze({
       provider: 'coops',
       stationId: '8532337',
@@ -215,6 +340,7 @@ const BEACHES = [
     lat: 38.9351,
     lon: -74.9060,
     tideStationId: '8536110',
+    waveModelConfigId: 'cape_may',
     waterTempSource: Object.freeze({
       provider: 'coops',
       stationId: '8536110',
@@ -261,6 +387,7 @@ const BEACHES = [
     lat: 44.3876,
     lon: -68.2039,
     tideStationId: '8413320',
+    waveModelConfigId: 'bar_harbor',
     waterTempSource: Object.freeze({
       provider: 'coops',
       stationId: '8413320',
@@ -277,6 +404,7 @@ const BEACHES = [
     lat: 43.3950,
     lon: -70.4221,
     tideStationId: '8418150',
+    waveModelConfigId: 'kennebunkport',
     waterTempSource: Object.freeze({
       provider: 'coops',
       stationId: '8418150',
@@ -293,6 +421,7 @@ const BEACHES = [
     lat: 38.7854,
     lon: -75.1482,
     tideStationId: '8557380',
+    waveModelConfigId: 'lewes',
     waterTempSource: Object.freeze({
       provider: 'coops',
       stationId: '8557380',
@@ -3459,8 +3588,7 @@ function renderOceanLoading() {
 
 function renderWaveModelUnavailable(message = '--') {
   if (offshoreWavesEl) offshoreWavesEl.textContent = message;
-  if (estimatedBreakersEl) estimatedBreakersEl.textContent = '--';
-  if (breakPointEl) breakPointEl.textContent = '--';
+  setWaveDetailRowsVisible(false);
   if (waveModelDetailsEl) waveModelDetailsEl.hidden = true;
   if (waveModelDetailTextEl) waveModelDetailTextEl.innerHTML = '';
 }
@@ -3471,8 +3599,7 @@ function renderWaveModel(oceanWave) {
   if (!oceanWave?.offshoreWave) {
     if (oceanWave?.error) {
       offshoreWavesEl.textContent = getWaveModelErrorLabel(oceanWave.error);
-      estimatedBreakersEl.textContent = '--';
-      breakPointEl.textContent = '--';
+      setWaveDetailRowsVisible(false);
       renderWaveModelDetails(oceanWave);
       return;
     }
@@ -3486,15 +3613,25 @@ function renderWaveModel(oceanWave) {
 
   const estimate = oceanWave.estimate;
   if (estimate?.status !== WAVE_MODEL_STATUS.OK) {
+    setWaveDetailRowsVisible(Boolean(oceanWave.modelConfigured));
     estimatedBreakersEl.textContent = 'Unavailable';
     breakPointEl.textContent = '--';
-    renderWaveModelDetails(oceanWave);
+    if (oceanWave.modelConfigured) renderWaveModelDetails(oceanWave);
+    else renderWaveModelDetails(null);
     return;
   }
 
+  setWaveDetailRowsVisible(true);
   estimatedBreakersEl.textContent = `Approx. ${formatFeet(estimate.breaking.waveHeightM)}`;
   breakPointEl.textContent = `About ${roundToNearest(metersToYards(estimate.breaking.distanceFromCurrentWaterlineM), 5)} yd offshore`;
   renderWaveModelDetails(oceanWave);
+}
+
+function setWaveDetailRowsVisible(isVisible) {
+  [estimatedBreakersEl, breakPointEl].forEach(element => {
+    const row = element?.closest('.ocean-detail');
+    if (row) row.hidden = !isVisible;
+  });
 }
 
 function renderWaveModelDetails(oceanWave) {
@@ -3507,8 +3644,16 @@ function renderWaveModelDetails(oceanWave) {
     lines.push(`Estimated breaking depth: ${formatFeet(estimate.breaking.localDepthM)}`);
     lines.push(`Estimated breaking distance: ${roundToNearest(metersToYards(estimate.breaking.distanceFromCurrentWaterlineM), 5)} yd from current waterline`);
     lines.push(`Breaking criterion: ${estimate.breaking.governingCriterion === 'depth' ? 'depth-limited' : 'steepness-limited'}`);
-    lines.push(`Submerged profile: 1:${Math.round(1 / estimate.inputs.offshoreSlope)}`);
+    if (estimate.inputs.profileType === 'dean') {
+      lines.push(`Profile: Dean equilibrium, D50 ${estimate.inputs.nativeD50Mm} mm`);
+      lines.push(`Profile A: ${estimate.inputs.profileParameterA.toFixed(3)} m^(1/3)`);
+    } else {
+      lines.push(`Submerged profile: 1:${Math.round(1 / estimate.inputs.offshoreSlope)}`);
+    }
     lines.push(`Exposed beach face: 1:${Math.round(1 / estimate.inputs.landwardSlope)}`);
+    if (estimate.metadata?.d50Basis) {
+      lines.push(`D50 basis: ${estimate.metadata.d50Basis}`);
+    }
     if (estimate.metadata?.approximate) {
       lines.push(`${estimate.metadata.tideSourceDatum} tide used as approximate ${estimate.metadata.modelDatum}`);
     }
@@ -3518,7 +3663,13 @@ function renderWaveModelDetails(oceanWave) {
     lines.push(getWaveModelErrorDetail(oceanWave.error));
   }
 
-  lines.push('Estimated from offshore buoy conditions, tide level, and a simplified beach profile. Actual waves vary with sandbars, wind, direction, storms, and local bathymetry.');
+  if (!lines.length) {
+    waveModelDetailsEl.hidden = true;
+    waveModelDetailTextEl.innerHTML = '';
+    return;
+  }
+
+  lines.push('Estimated from offshore buoy conditions, current tide, and a sediment-based equilibrium beach profile. Actual surf varies with sandbars, local bathymetry, wave direction, storms, and seasonal changes.');
 
   waveModelDetailsEl.hidden = false;
   waveModelDetailTextEl.innerHTML = lines.map(line => `<div>${escapeHtml(line)}</div>`).join('');
@@ -3567,7 +3718,7 @@ async function loadWaterTemp(beach, selectedDate = getAppNow()) {
 }
 
 async function loadWaveModelForBeach(beach) {
-  const config = WAVE_MODEL_CONFIG[beach?.waveModelConfigId];
+  const config = WAVE_LOCATION_CONFIG[beach?.waveModelConfigId];
   if (!config?.enabled) {
     return {
       estimate: { status: WAVE_MODEL_STATUS.DISABLED }
@@ -3575,22 +3726,28 @@ async function loadWaveModelForBeach(beach) {
   }
 
   const now = getAppNow();
-  const [offshoreWave, tide] = await Promise.all([
-    fetchOffshoreWave(config, now),
-    fetchWaveModelTide(config, now)
-  ]);
+  const offshoreWave = await fetchOffshoreWave(config, now);
+  const modelConfigured = hasBreakerModelConfig(config);
+  const tide = modelConfigured ? await fetchWaveModelTide(config, now) : null;
 
   return {
     offshoreWave,
     sourceLabel: `NDBC ${config.buoyStationId}`,
-    estimate: estimateNearshoreBreaking({
-      locationId: beach.id,
-      locationConfig: config,
-      offshoreWave,
-      tide,
-      now
-    })
+    modelConfigured,
+    estimate: modelConfigured
+      ? estimateNearshoreBreaking({
+        locationId: beach.id,
+        locationConfig: config,
+        offshoreWave,
+        tide,
+        now
+      })
+      : { status: WAVE_MODEL_STATUS.DISABLED }
   };
+}
+
+function hasBreakerModelConfig(config) {
+  return config?.profileType === 'dean' && Number.isFinite(config.nativeD50Mm);
 }
 
 async function fetchOffshoreWave(config, now) {
@@ -3782,7 +3939,7 @@ function estimateNearshoreBreaking({ locationId, locationConfig, offshoreWave, t
     const breakPointXM = calculateBreakPointXM({
       breakingDepthM: search.point.localDepthM,
       tideAboveLatM: tideDatum.tideAboveLatM,
-      offshoreSlope: locationConfig.offshoreSlope
+      locationConfig
     });
 
     if (search.point.localDepthM <= tideDatum.tideAboveLatM) {
@@ -3806,7 +3963,7 @@ function estimateNearshoreBreaking({ locationId, locationConfig, offshoreWave, t
         localDepthM: search.point.localDepthM,
         latBedDepthM: getLatDepthM({
           xM: breakPointXM,
-          offshoreSlope: locationConfig.offshoreSlope
+          locationConfig
         }),
         waveHeightM: search.point.localWaveHeightM,
         wavelengthM: search.point.wavelengthM,
@@ -3843,7 +4000,7 @@ function validateWaveModelInputs({ locationConfig, offshoreWave, tide, now }) {
     || offshoreWave.periodS > WAVE_MODEL_LIMITS.maxWavePeriodS
     || offshoreWave.referenceDepthM < WAVE_MODEL_LIMITS.minReferenceDepthM
     || offshoreWave.referenceDepthM > WAVE_MODEL_LIMITS.maxReferenceDepthM
-    || locationConfig.offshoreSlope <= 0
+    || !hasValidSubmergedProfile(locationConfig)
     || locationConfig.landwardSlope <= 0
     || locationConfig.maxProfileDepthM <= 0
     || locationConfig.breakerIndexGamma <= 0
@@ -3860,6 +4017,14 @@ function validateWaveModelInputs({ locationConfig, offshoreWave, tide, now }) {
   }
 
   return null;
+}
+
+function hasValidSubmergedProfile(locationConfig) {
+  if (locationConfig.profileType === 'dean') {
+    return Number.isFinite(locationConfig.nativeD50Mm) && locationConfig.nativeD50Mm > 0;
+  }
+
+  return Number.isFinite(locationConfig.offshoreSlope) && locationConfig.offshoreSlope > 0;
 }
 
 function isStale(timeValue, now, maxAgeMinutes) {
@@ -3891,11 +4056,16 @@ function convertTideToModelDatum({
 }
 
 function buildWaveModelInputs(locationConfig, offshoreWave, tideAboveLatM) {
+  const profileParameterA = getDeanProfileParameterA(locationConfig.nativeD50Mm);
+
   return {
     offshoreWaveHeightM: offshoreWave.significantHeightM,
     wavePeriodS: offshoreWave.periodS,
     offshoreReferenceDepthM: offshoreWave.referenceDepthM,
     tideAboveLatM,
+    profileType: locationConfig.profileType || 'slope',
+    nativeD50Mm: locationConfig.nativeD50Mm,
+    profileParameterA,
     offshoreSlope: locationConfig.offshoreSlope,
     landwardSlope: locationConfig.landwardSlope,
     breakerIndexGamma: locationConfig.breakerIndexGamma
@@ -3912,8 +4082,15 @@ function buildWaveModelMetadata({ locationConfig, offshoreWave, tide, tideDatum,
     datumOffsetM: tideDatum.datumOffsetM,
     datumConversionApplied: tideDatum.datumConversionApplied,
     approximate: tideDatum.datumApproximate,
+    profileType: locationConfig.profileType || 'slope',
+    nativeD50Mm: locationConfig.nativeD50Mm,
+    profileParameterA: getDeanProfileParameterA(locationConfig.nativeD50Mm),
+    d50Basis: locationConfig.d50Basis,
+    d50Confidence: locationConfig.d50Confidence,
     assumptions: [
-      `uniform 1:${Math.round(1 / locationConfig.offshoreSlope)} submerged profile`,
+      locationConfig.profileType === 'dean'
+        ? 'Dean equilibrium submerged profile'
+        : `uniform 1:${Math.round(1 / locationConfig.offshoreSlope)} submerged profile`,
       `uniform 1:${Math.round(1 / locationConfig.landwardSlope)} exposed beach face`,
       'shore-normal waves',
       'no refraction',
@@ -3924,7 +4101,10 @@ function buildWaveModelMetadata({ locationConfig, offshoreWave, tide, tideDatum,
 }
 
 function findBreakingPoint({ locationConfig, offshoreWave, offshoreGroupVelocityMps, tideAboveLatM }) {
-  const maxDistanceOffshoreM = locationConfig.maxProfileDepthM / locationConfig.offshoreSlope;
+  const maxDistanceOffshoreM = getDistanceForLatDepthM({
+    latDepthM: locationConfig.maxProfileDepthM,
+    locationConfig
+  });
   const stepM = locationConfig.profileStepM || 1;
   let previous = null;
 
@@ -3999,7 +4179,7 @@ function calculateWaveProfilePoint({ xM, locationConfig, offshoreWave, offshoreG
   const localDepthM = getCurrentOffshoreDepthM({
     xM,
     tideAboveLatM,
-    offshoreSlope: locationConfig.offshoreSlope
+    locationConfig
   });
   if (localDepthM <= 0) return null;
 
@@ -4031,8 +4211,12 @@ function calculateWaveProfilePoint({ xM, locationConfig, offshoreWave, offshoreG
   };
 }
 
-function getLatDepthM({ xM, offshoreSlope }) {
+function getLatDepthM({ xM, offshoreSlope, locationConfig }) {
   if (xM < 0) throw new RangeError('LAT offshore depth requires x >= 0');
+  if (locationConfig?.profileType === 'dean') {
+    return getDeanProfileParameterA(locationConfig.nativeD50Mm) * Math.pow(xM, 2 / 3);
+  }
+  if (offshoreSlope == null) offshoreSlope = locationConfig?.offshoreSlope;
   return xM * offshoreSlope;
 }
 
@@ -4040,9 +4224,9 @@ function getBedElevationRelativeToLatM({ xM, offshoreSlope, landwardSlope }) {
   return -(xM >= 0 ? offshoreSlope : landwardSlope) * xM;
 }
 
-function getCurrentOffshoreDepthM({ xM, tideAboveLatM, offshoreSlope }) {
+function getCurrentOffshoreDepthM({ xM, tideAboveLatM, offshoreSlope, locationConfig }) {
   if (xM < 0) throw new RangeError('Offshore depth calculation requires x >= 0');
-  return xM * offshoreSlope + tideAboveLatM;
+  return getLatDepthM({ xM, offshoreSlope, locationConfig }) + tideAboveLatM;
 }
 
 function calculateCurrentWaterlineXM({ tideAboveLatM, landwardSlope }) {
@@ -4050,13 +4234,33 @@ function calculateCurrentWaterlineXM({ tideAboveLatM, landwardSlope }) {
   return -tideAboveLatM / landwardSlope;
 }
 
-function calculateBreakPointXM({ breakingDepthM, tideAboveLatM, offshoreSlope }) {
-  if (offshoreSlope <= 0) throw new RangeError('Offshore slope must be positive');
-  return (breakingDepthM - tideAboveLatM) / offshoreSlope;
+function calculateBreakPointXM({ breakingDepthM, tideAboveLatM, offshoreSlope, locationConfig }) {
+  const latDepthM = breakingDepthM - tideAboveLatM;
+  if (latDepthM <= 0) return 0;
+  return getDistanceForLatDepthM({ latDepthM, offshoreSlope, locationConfig });
 }
 
 function calculateBreakDistanceFromWaterlineM({ breakPointXM, currentWaterlineXM }) {
   return breakPointXM - currentWaterlineXM;
+}
+
+function getDistanceForLatDepthM({ latDepthM, offshoreSlope, locationConfig }) {
+  if (latDepthM < 0) throw new RangeError('LAT depth must be nonnegative');
+  if (locationConfig?.profileType === 'dean') {
+    const profileParameterA = getDeanProfileParameterA(locationConfig.nativeD50Mm);
+    if (profileParameterA <= 0) throw new RangeError('Dean profile parameter must be positive');
+    return Math.pow(latDepthM / profileParameterA, 3 / 2);
+  }
+
+  if (offshoreSlope == null) offshoreSlope = locationConfig?.offshoreSlope;
+  if (offshoreSlope <= 0) throw new RangeError('Offshore slope must be positive');
+  return latDepthM / offshoreSlope;
+}
+
+function getDeanProfileParameterA(nativeD50Mm) {
+  return Number.isFinite(nativeD50Mm) && nativeD50Mm > 0
+    ? 0.21 * Math.pow(nativeD50Mm, 0.48)
+    : null;
 }
 
 function solveWaveNumber({ periodS, depthM, gravityMps2 = GRAVITY_MPS2 }) {

@@ -59,6 +59,7 @@ this.calculateBreakDistanceFromWaterlineM = calculateBreakDistanceFromWaterlineM
 this.solveWaveNumber = solveWaveNumber;
 this.interpolateTideHeight = interpolateTideHeight;
 this.convertTideToModelDatum = convertTideToModelDatum;
+this.getDeanProfileParameterA = getDeanProfileParameterA;
 `, context);
 
 const approx = (actual, expected, tolerance, message) => {
@@ -157,5 +158,45 @@ assert.equal(context.interpolateTideHeight({
   afterHeightM: 1,
   targetTimeMs: 250
 }), 0.25);
+
+const deanA = context.getDeanProfileParameterA(0.414);
+approx(deanA, 0.138, 0.002, 'Belmar Dean A');
+approx(context.getLatDepthM({ xM: 20, locationConfig: { profileType: 'dean', nativeD50Mm: 0.414 } }), 1, 0.08, 'Dean depth at 20m');
+approx(context.getLatDepthM({ xM: 56, locationConfig: { profileType: 'dean', nativeD50Mm: 0.414 } }), 2, 0.08, 'Dean depth at 56m');
+approx(context.getLatDepthM({ xM: 157, locationConfig: { profileType: 'dean', nativeD50Mm: 0.414 } }), 4, 0.12, 'Dean depth at 157m');
+
+const deanModel = context.estimateNearshoreBreaking({
+  locationId: 'belmar',
+  locationConfig: {
+    enabled: true,
+    profileType: 'dean',
+    profileDatum: 'LAT',
+    nativeD50Mm: 0.414,
+    landwardSlope: 1 / 5,
+    maxProfileDepthM: 4,
+    breakerIndexGamma: 0.55,
+    allowApproximateDatum: true,
+    profileStepM: 1,
+    breakDistanceToleranceM: 0.1
+  },
+  offshoreWave: {
+    significantHeightM: 0.8,
+    periodS: 8,
+    referenceDepthM: 25,
+    observationTime: now.toISOString()
+  },
+  tide: {
+    heightAbovePublishedDatumM: 0.75,
+    publishedDatum: 'MLLW',
+    publishedDatumToLatOffsetM: null,
+    evaluationTime: now.toISOString()
+  },
+  now
+});
+
+assert.equal(deanModel.status, 'ok');
+assert.equal(deanModel.inputs.profileType, 'dean');
+approx(deanModel.inputs.profileParameterA, 0.138, 0.002, 'Dean model A');
+assert.ok(deanModel.breaking.distanceFromCurrentWaterlineM > 0);
 
 console.log('wave-model tests passed');

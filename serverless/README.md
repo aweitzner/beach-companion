@@ -40,10 +40,14 @@ observations.
 
 It fetches:
 
-- `https://www.ndbc.noaa.gov/data/realtime2/44091.txt`
+- `https://www.ndbc.noaa.gov/data/realtime2/<station>.txt`
 
 Then it returns normalized wave fields for:
 
+- `?station=44007`
+- `?station=44009`
+- `?station=44033`
+- `?station=44065`
 - `?station=44091`
 
 The frontend defaults to:
