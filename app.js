@@ -1,4 +1,4 @@
-const APP_VERSION = 'v1.5.46';
+const APP_VERSION = 'v1.5.47';
 const queryParams = new URLSearchParams(window.location.search);
 const MAINE_WATER_QUALITY_PROXY_URL = queryParams.get('mhbProxyUrl') || '/api/water-quality/maine';
 const NDBC_WAVES_PROXY_URL = queryParams.get('wavesProxyUrl') || 'https://beach-companion-ndbc-waves.a-weitzner.workers.dev';
@@ -820,6 +820,61 @@ function breakfastNote(beach, date = getAppNow()) {
   return null;
 }
 
+function holidayNotes(date = getAppNow()) {
+  const notes = [];
+  const holidayName = getMajorUsHolidayName(date);
+
+  if (holidayName) {
+    notes.push({
+      text: holidayName,
+      priority: 8
+    });
+  }
+
+  if (isFounderDay(date)) {
+    notes.push({
+      text: "Happy Founder's Day",
+      priority: 8
+    });
+  }
+
+  return notes;
+}
+
+function getMajorUsHolidayName(date) {
+  const month = date.getMonth();
+  const day = date.getDate();
+
+  if (month === 0 && day === 1) return "New Year's Day";
+  if (month === 0 && isNthWeekdayOfMonth(date, 1, 3)) return 'MLK Day';
+  if (month === 1 && isNthWeekdayOfMonth(date, 1, 3)) return 'Presidents Day';
+  if (month === 4 && isLastWeekdayOfMonth(date, 1)) return 'Memorial Day';
+  if (month === 5 && day === 19) return 'Juneteenth';
+  if (month === 6 && day === 4) return 'Independence Day';
+  if (month === 8 && isNthWeekdayOfMonth(date, 1, 1)) return 'Labor Day';
+  if (month === 9 && isNthWeekdayOfMonth(date, 1, 2)) return 'Indigenous Peoples Day';
+  if (month === 10 && day === 11) return 'Veterans Day';
+  if (month === 10 && isNthWeekdayOfMonth(date, 4, 4)) return 'Thanksgiving';
+  if (month === 11 && day === 25) return 'Christmas Day';
+
+  return null;
+}
+
+function isFounderDay(date) {
+  return date.getMonth() === 8 && date.getDate() === 7;
+}
+
+function isNthWeekdayOfMonth(date, weekday, nth) {
+  return date.getDay() === weekday && Math.ceil(date.getDate() / 7) === nth;
+}
+
+function isLastWeekdayOfMonth(date, weekday) {
+  if (date.getDay() !== weekday) return false;
+  const nextWeek = new Date(date);
+  nextWeek.setDate(date.getDate() + 7);
+  return nextWeek.getMonth() !== date.getMonth();
+}
+
 function isNewJerseyBeach(beach) {
   return String(beach?.displayName || '').endsWith(', NJ');
 }
@@ -859,6 +914,7 @@ function buildBeachNotes(data) {
     sealNote(data.beach, data.current, precipitation, data.date),
     clothingNote(data.date, data.range, data.strongestWindSpeed, data.hourly),
     fullMoonRiseNote(data.astronomy),
+    holidayNotes(data.date),
     breakfastNote(data.beach, data.date)
   ]
     .flatMap(note => Array.isArray(note) ? note : [note])
