@@ -1,4 +1,4 @@
-const APP_VERSION = 'v1.5.47';
+const APP_VERSION = 'v1.5.48';
 const queryParams = new URLSearchParams(window.location.search);
 const MAINE_WATER_QUALITY_PROXY_URL = queryParams.get('mhbProxyUrl') || '/api/water-quality/maine';
 const NDBC_WAVES_PROXY_URL = queryParams.get('wavesProxyUrl') || 'https://beach-companion-ndbc-waves.a-weitzner.workers.dev';
@@ -834,7 +834,8 @@ function holidayNotes(date = getAppNow()) {
   if (isFounderDay(date)) {
     notes.push({
       text: "Happy Founder's Day",
-      priority: 8
+      priority: 8,
+      bypassNoteLimit: true
     });
   }
 
@@ -919,10 +920,18 @@ function buildBeachNotes(data) {
   ]
     .flatMap(note => Array.isArray(note) ? note : [note])
     .filter(Boolean)
-    .sort((a, b) => a.priority - b.priority)
-    .slice(0, 3);
+    .sort((a, b) => a.priority - b.priority);
 
-  return notes;
+  return includeNoteLimitExemptions(notes, 3);
+}
+
+function includeNoteLimitExemptions(notes, limit) {
+  const limited = notes.slice(0, limit);
+  const exempt = notes.filter(note =>
+    note.bypassNoteLimit && !limited.some(limitedNote => limitedNote.text === note.text)
+  );
+
+  return [...limited, ...exempt];
 }
 
 // The day selector always represents a rolling 7-day planning window.
